@@ -57,6 +57,7 @@ jobs:
           { "commands": [
             "set -eu",
             "APP=/var/www/django_websites/Poker_server",
+            "git config --global --get-all safe.directory 2>/dev/null | grep -qx $APP || git config --global --add safe.directory $APP",
             "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "git -C $APP show origin/main:deploy/fetch-env-from-ssm.sh > /usr/local/sbin/poker-env-fetch.sh",
             "chown root:root /usr/local/sbin/poker-env-fetch.sh && chmod 0755 /usr/local/sbin/poker-env-fetch.sh",
