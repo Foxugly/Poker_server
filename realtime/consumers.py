@@ -27,6 +27,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if participant is not None:
                 await database_sync_to_async(services.set_connected)(participant, False)
                 await self._broadcast("participant.left", {"participantId": self.public_id})
+                await self._broadcast_presence(participant.room)
             await self.channel_layer.group_discard(self.group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
@@ -101,27 +102,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "username": participant.display_name,
             "role": participant.role,
         })
+        await self._broadcast_presence(participant.room)
 
     async def _handle_claim(self, participant, cid):
-        present = await database_sync_to_async(
-            lambda: services.facilitator_present(participant.room)
-        )()
-        if present:
-            return await self._error("guard.inactive", "Facilitator still present", "facilitator.claim", cid)
-        # Phase 1 guard (contract §6.f): first claimer becomes facilitator. Full token
-        # reissue is wired with the frontend; scaffold promotes the role + broadcasts.
-        await database_sync_to_async(self._promote)(participant)
+        allowed = await database_sync_to_async(services.can_claim)(participant.room)
+        if not allowed:
+            return await self._error("guard.inactive", "Facilitator guard not active", "facilitator.claim", cid)
+        await database_sync_to_async(services.promote_facilitator)(participant.room, participant)
         await self._broadcast("facilitator.changed", {"newFacilitatorId": self.public_id})
-
-    @staticmethod
-    def _promote(participant):
-        from rooms.models import Role
-        session = participant.room.current_session
-        if session:
-            session.facilitator = participant
-            session.save(update_fields=["facilitator"])
-        participant.role = Role.FACILITATOR
-        participant.save(update_fields=["role"])
+        await self._broadcast_presence(participant.room)
 
     # --- helpers ----------------------------------------------------------
 
@@ -131,6 +120,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def _broadcast_participation(self, room):
         data = await database_sync_to_async(services.participation)(room)
         await self._broadcast("participation.update", data)
+
+    async def _broadcast_presence(self, room):
+        present = await database_sync_to_async(services.facilitator_present)(room)
+        await self._broadcast("facilitator.presence", {"present": present})
 
     async def _emit(self, mtype, payload, cid=None):
         message = {"v": PROTOCOL_VERSION, "type": mtype, "payload": payload}

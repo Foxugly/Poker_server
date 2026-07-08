@@ -201,13 +201,40 @@ def participants_list(room):
     return out
 
 
-def facilitator_present(room):
+def _facilitator_participant(room):
     session = _current_session(room)
-    fac_id = session.facilitator_id if session else None
-    if fac_id is None:
-        return any(p.role == Role.FACILITATOR and p.is_connected for p in room.participants.all())
-    fac = room.participants.filter(id=fac_id).first()
+    if session and session.facilitator_id:
+        return room.participants.filter(id=session.facilitator_id).first()
+    return room.participants.filter(role=Role.FACILITATOR).first()
+
+
+def facilitator_present(room):
+    fac = _facilitator_participant(room)
     return bool(fac and fac.is_connected)
+
+
+def can_claim(room):
+    """Guard (contract §6.f): the takeover opens only once the facilitator has been
+    absent for FACILITATOR_GUARD_SECONDS. Enforced at claim-time (no background timer),
+    so a brief network blip within the grace period does NOT cost the facilitator the role."""
+    fac = _facilitator_participant(room)
+    if fac is None:
+        return True
+    if fac.is_connected:
+        return False
+    return (timezone.now() - fac.last_seen_at).total_seconds() >= settings.FACILITATOR_GUARD_SECONDS
+
+
+def promote_facilitator(room, participant):
+    """First claimer becomes facilitator. Authority is by session.facilitator, so the
+    old facilitator returning is a plain voter (definitive transfer, §6.f) — no token
+    reissue needed since control is keyed on participant identity, not a secret."""
+    session = _current_session(room)
+    if session:
+        session.facilitator = participant
+        session.save(update_fields=["facilitator"])
+    participant.role = Role.FACILITATOR
+    participant.save(update_fields=["role"])
 
 
 def build_state_sync(participant):

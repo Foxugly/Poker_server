@@ -7,12 +7,24 @@ import pytest
 from channels.db import database_sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
+from django.utils import timezone
 
 from decks.seed import create_standard_deck
 from realtime.routing import websocket_urlpatterns
 from rooms.codes import generate_token, generate_unique_code
 from rooms.models import Participant, Role, Room
 from rooms.snapshot import build_deck_snapshot
+
+
+def _age_facilitator(code, seconds):
+    """Simulate the facilitator having been absent for `seconds` (guard test)."""
+    Room.objects.get(code=code).participants.filter(role=Role.FACILITATOR).update(
+        is_connected=False, last_seen_at=timezone.now() - timezone.timedelta(seconds=seconds)
+    )
+
+
+def _role_of(token):
+    return Participant.objects.get(token=token).role
 
 
 def _make_room():
@@ -97,6 +109,56 @@ async def test_voter_cannot_open_vote_authority():
     assert err["payload"]["code"] == "forbidden.not_facilitator"
 
     await fac.disconnect()
+    await voter.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_reconnection_restores_vote_and_state():
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    await fac.send_json_to({"v": 1, "type": "subject.set", "payload": {"text": "Budget?"}})
+    await _drain_until(voter, "subject.updated")
+    await fac.send_json_to({"v": 1, "type": "vote.open", "payload": {}})
+    await _drain_until(voter, "vote.opened")
+    await voter.send_json_to({"v": 1, "type": "vote.cast", "payload": {"cardValue": "3"}})
+    await _drain_until(fac, "participation.update", pred=lambda p: p["voted"] == 1)
+
+    # Network drop + reconnect with the same token restores room + vote (contract §8).
+    await voter.disconnect()
+    voter2, sync2 = await _join(voter_token, code)
+    assert sync2["payload"]["roundState"] == "open"
+    assert sync2["payload"]["myVote"] == "3"
+
+    await fac.disconnect()
+    await voter2.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_facilitator_guard_and_takeover():
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    # Facilitator drops → others learn presence=false.
+    await fac.disconnect()
+    await _drain_until(voter, "facilitator.presence", pred=lambda p: p["present"] is False)
+
+    # A claim within the 60s grace is rejected (a blip must not cost the role).
+    await voter.send_json_to({"v": 1, "type": "facilitator.claim", "payload": {}})
+    err = await _drain_until(voter, "error")
+    assert err["payload"]["code"] == "guard.inactive"
+
+    # After the grace elapses, the first claimer takes over.
+    await database_sync_to_async(_age_facilitator)(code, 61)
+    await voter.send_json_to({"v": 1, "type": "facilitator.claim", "payload": {}})
+    changed = await _drain_until(voter, "facilitator.changed")
+    assert changed["payload"]["newFacilitatorId"]
+    assert await database_sync_to_async(_role_of)(voter_token) == Role.FACILITATOR
+
     await voter.disconnect()
 
 
