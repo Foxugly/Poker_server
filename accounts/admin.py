@@ -9,11 +9,11 @@ class UserAdmin(BaseUserAdmin):
     """Email-based admin (Django's UserAdmin is hardwired to ``username``, §3.16)."""
 
     ordering = ("email",)
-    list_display = ("email", "is_staff", "is_superuser", "email_confirmed")
-    search_fields = ("email", "first_name", "last_name")
+    list_display = ("email", "display_name", "is_staff", "is_superuser", "email_confirmed")
+    search_fields = ("email", "display_name", "first_name", "last_name")
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name")}),
+        ("Personal info", {"fields": ("display_name", "first_name", "last_name")}),
         ("Status", {"fields": ("email_confirmed",)}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),

@@ -1,5 +1,9 @@
+import secrets
+
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -43,6 +47,9 @@ class User(AbstractUser):
 
     username = None
     email = models.EmailField(unique=True)
+    # Persisted display name for authenticated members (Phase 2) — DISTINCT from
+    # the ephemeral anonymous Participant.display_name. Not an auth identifier.
+    display_name = models.CharField(max_length=50, blank=True)
     # Email ownership gate (Phase 2 auth). Present now so the shape matches the fleet.
     email_confirmed = models.BooleanField(default=False)
 
@@ -53,3 +60,26 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+def generate_magic_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+class MagicLinkToken(models.Model):
+    """Single-use, short-TTL login token keyed on a user (Phase 2 magic-link).
+    The raw token travels only in the emailed link; verification consumes it."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="magic_links")
+    token = models.CharField(max_length=64, unique=True, default=generate_magic_token)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def is_valid(self) -> bool:
+        return self.used_at is None and self.expires_at > timezone.now()
+
+    def consume(self):
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])

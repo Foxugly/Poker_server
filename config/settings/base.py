@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -47,6 +48,7 @@ INSTALLED_APPS = [
     "parler",
     "django_extensions",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "accounts.apps.AccountsConfig",
     "decks.apps.DecksConfig",
@@ -115,6 +117,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 AUTH_USER_MODEL = "accounts.User"
 
+AUTHENTICATION_BACKENDS = [
+    "accounts.auth_backend.EmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
 # --- i18n / languages: ONE source of truth (scope §10 extensibility) ---
 # Adding a language = one entry here (+ a Transloco catalog on the SPA) — no schema
 # migration: card text lives in parler translation rows keyed by language_code.
@@ -173,7 +180,9 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
@@ -182,10 +191,42 @@ REST_FRAMEWORK = {
         "anon": "60/min",
         "create_room": "20/min",
         "join_room": "60/min",
+        "login": "10/min",
+        "register": "5/min",
+        "password_reset": "5/min",
+        "resend": "3/min",
+        "magic_link": "5/min",
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
 }
+
+# --- JWT (Phase 2 auth). Rotation + blacklist: every refresh issues a new refresh
+# token and blacklists the old — clients MUST persist the rotated token. ---
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=90)),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# --- Email (transactional: confirm / reset / magic-link). Console in dev; prod
+# sets EMAIL_BACKEND (SMTP/Graph) + DEFAULT_FROM_EMAIL via SSM. ---
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Delegation Poker <noreply@poker.foxugly.com>")
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+MAGIC_LINK_TTL_MINUTES = env.int("MAGIC_LINK_TTL_MINUTES", default=15)
+
+# --- Cloudflare Turnstile (captcha on register / forgot / magic-link). Gated on
+# the secret: skipped until TURNSTILE_SECRET_KEY is set, then fail-closed. ---
+TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
+TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Delegation Poker API",
