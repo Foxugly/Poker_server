@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -163,6 +164,13 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Europe/Brussels"
+CELERY_BEAT_SCHEDULE = {
+    # Sweep rooms idle > 8h and flag them expired (scope §4).
+    "poker-expire-stale-rooms": {
+        "task": "rooms.tasks.expire_stale_rooms",
+        "schedule": crontab(minute="*/15"),
+    },
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (),
