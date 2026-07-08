@@ -56,6 +56,7 @@ jobs:
           cat > /tmp/ssm-params.json <<'EOF'
           { "commands": [
             "set -eu",
+            "export HOME=/root",
             "APP=/var/www/django_websites/Poker_server",
             "git config --global --get-all safe.directory 2>/dev/null | grep -qx $APP || git config --global --add safe.directory $APP",
             "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
