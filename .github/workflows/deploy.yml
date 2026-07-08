@@ -55,7 +55,7 @@ jobs:
         run: |
           cat > /tmp/ssm-params.json <<'EOF'
           { "commands": [
-            "set -euo pipefail",
+            "set -eu",
             "APP=/var/www/django_websites/Poker_server",
             "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "git -C $APP show origin/main:deploy/fetch-env-from-ssm.sh > /usr/local/sbin/poker-env-fetch.sh",
