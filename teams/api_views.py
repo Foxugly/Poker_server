@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from config.api_errors import error_response
 
-from billing.service import paid_required
+from billing.service import paid_required, user_is_paid, user_quota
 
 from .invitations import send_invitation_email
 from .models import Invitation, Team, TeamMembership, TeamRole
@@ -42,6 +42,16 @@ class TeamListCreateView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        # Teams are a paid feature (P2.7): require an active subscription and stay within
+        # the plan's team quota. Inert until Stripe is configured (creation stays open).
+        if not user_is_paid(request.user):
+            return error_response(
+                code="subscription_required", detail="A subscription is required to create a team.", http_status=402
+            )
+        if Team.objects.filter(owner=request.user).count() >= user_quota(request.user):
+            return error_response(
+                code="quota_exceeded", detail="Your plan's team quota is reached.", http_status=402
+            )
         serializer = TeamCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         team = Team.objects.create(name=serializer.validated_data["name"].strip(), owner=request.user)

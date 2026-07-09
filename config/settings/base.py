@@ -239,12 +239,23 @@ GRAPH_SENDER = env("GRAPH_SENDER", default="")  # the "from" mailbox (e.g. norep
 TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
 TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
 
-# --- Stripe billing (P2.7). Gated on the secret: billing is "configured" only when
-# STRIPE_SECRET_KEY is set. Until then, team_is_paid() returns True (paid features stay
-# open) and the checkout endpoints return 503. ---
+# --- Stripe billing (P2.7). Account-level subscription: 2 plans (team1/team5) ×
+# monthly/yearly = 4 prices. Gated on the secret: billing is "configured" only when
+# STRIPE_SECRET_KEY + at least one price are set. Until then, features stay open and
+# checkout returns 503. ---
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
-STRIPE_PRICE_ID = env("STRIPE_PRICE_ID", default="")
+STRIPE_PRICES = {
+    "team1": {
+        "monthly": env("STRIPE_PRICE_TEAM1_MONTHLY", default=""),
+        "yearly": env("STRIPE_PRICE_TEAM1_YEARLY", default=""),
+    },
+    "team5": {
+        "monthly": env("STRIPE_PRICE_TEAM5_MONTHLY", default=""),
+        "yearly": env("STRIPE_PRICE_TEAM5_YEARLY", default=""),
+    },
+}
+PLAN_QUOTAS = {"team1": 1, "team5": 5}
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Delegation Poker API",

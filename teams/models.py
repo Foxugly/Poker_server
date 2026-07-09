@@ -26,12 +26,8 @@ class Team(models.Model):
     # standard emerald felt + dark card-back base used by anonymous rooms.
     card_back_color = models.CharField(max_length=9, default="#143d2f")
     felt_color = models.CharField(max_length=9, default="#10b981")
-    # Stripe subscription (P2.7). subscription_status mirrors Stripe: "active"/"trialing"
-    # unlock paid features; "" = never subscribed.
-    stripe_customer_id = models.CharField(max_length=64, blank=True, default="")
-    stripe_subscription_id = models.CharField(max_length=64, blank=True, default="")
-    subscription_status = models.CharField(max_length=32, blank=True, default="")
-    subscription_current_period_end = models.DateTimeField(null=True, blank=True)
+    # Billing (P2.7) is account-level: a team is "paid" via its owner's
+    # billing.Subscription (plan quota), not a per-team subscription.
 
     def __str__(self):
         return self.name
