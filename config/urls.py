@@ -9,6 +9,7 @@ urlpatterns = [
     path("health/", include("health.urls")),
     path("api/auth/", include("accounts.api_urls")),
     path("api/teams/", include("teams.api_urls")),
+    path("api/history/", include("history.api_urls")),
     path("api/", include("rooms.api_urls")),
 ]
 
