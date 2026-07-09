@@ -64,5 +64,12 @@ def build_deck_snapshot(deck: Deck) -> dict:
         "resolutionStrategy": vote_type.resolution_strategy,
         "deckId": deck.pk,
         "cardBack": {"image": _media_url(deck.card_back_image)},
+        # Room theme (P2.6): default appearance; team rooms override from the team.
+        "theme": {"cardBackColor": DEFAULT_CARD_BACK_COLOR, "feltColor": DEFAULT_FELT_COLOR},
         "cards": cards,
     }
+
+
+# Defaults mirror the frontend's built-in room look (dark card-back base, emerald felt).
+DEFAULT_CARD_BACK_COLOR = "#143d2f"
+DEFAULT_FELT_COLOR = "#10b981"

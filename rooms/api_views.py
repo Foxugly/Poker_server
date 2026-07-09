@@ -76,6 +76,9 @@ class CreateRoomView(APIView):
                 return error_response(code="username_required", detail="A display name is required.", http_status=400)
 
         snapshot = build_deck_snapshot(deck)
+        if team is not None:
+            # Apply the team's appearance customization (P2.6) to this room's snapshot.
+            snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
         room = Room(code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot, team=team)
         room.touch(save=False)

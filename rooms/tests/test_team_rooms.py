@@ -42,6 +42,17 @@ def test_create_team_room_requires_membership(standard_deck, team, member):
 
 
 @pytest.mark.django_db
+def test_team_room_snapshot_uses_team_appearance(standard_deck, team, member):
+    team.card_back_color = "#101010"
+    team.felt_color = "#00aa66"
+    team.save(update_fields=["card_back_color", "felt_color"])
+    mc = APIClient()
+    mc.force_authenticate(member)
+    snap = mc.post("/api/rooms", {"team": team.id}, format="json").json()["deckSnapshot"]
+    assert snap["theme"] == {"cardBackColor": "#101010", "feltColor": "#00aa66"}
+
+
+@pytest.mark.django_db
 def test_team_room_join_members_only_and_rejoin(standard_deck, team, member):
     mc = APIClient()
     mc.force_authenticate(member)

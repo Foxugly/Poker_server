@@ -110,6 +110,26 @@ def test_non_member_cannot_view_team(client, owner):
 
 
 @pytest.mark.django_db
+def test_appearance_colors_admin_only_and_validated(client, owner):
+    team_id = _create_team(client).json()["id"]
+
+    # Owner (admin) sets valid colours.
+    r = client.patch(f"/api/teams/{team_id}/", {"card_back_color": "#222222", "felt_color": "#0abf53"}, format="json")
+    assert r.status_code == 200
+    assert r.json()["card_back_color"] == "#222222" and r.json()["felt_color"] == "#0abf53"
+
+    # An invalid hex is rejected.
+    assert client.patch(f"/api/teams/{team_id}/", {"felt_color": "green"}, format="json").status_code == 400
+
+    # A plain member cannot change appearance.
+    member = _user("m@example.com", "Mia")
+    TeamMembership.objects.create(team_id=team_id, user=member, role=TeamRole.MEMBER)
+    mc = APIClient()
+    mc.force_authenticate(member)
+    assert mc.patch(f"/api/teams/{team_id}/", {"felt_color": "#ffffff"}, format="json").status_code == 403
+
+
+@pytest.mark.django_db
 def test_owner_cannot_be_removed(client, owner):
     team_id = _create_team(client).json()["id"]
     resp = client.delete(f"/api/teams/{team_id}/members/{owner.id}/")

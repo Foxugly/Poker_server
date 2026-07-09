@@ -1,3 +1,5 @@
+import re
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -21,6 +23,7 @@ from .serializers import (
 )
 
 INVITE_TTL_DAYS = 7
+_HEX_COLOR = re.compile(r"^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 
 class TeamListCreateView(APIView):
@@ -60,10 +63,21 @@ class TeamDetailView(APIView):
         team = self._team(team_id)
         if not is_admin(team, request.user):
             return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        updates = []
         name = (request.data.get("name") or "").strip()
         if name:
             team.name = name
-            team.save(update_fields=["name"])
+            updates.append("name")
+        # Appearance (P2.6): card-back + felt colours, validated as #RRGGBB[AA].
+        for field in ("card_back_color", "felt_color"):
+            if field in request.data:
+                color = (request.data.get(field) or "").strip()
+                if not _HEX_COLOR.match(color):
+                    return error_response(code="invalid_color", detail="Expected #RRGGBB.", http_status=400)
+                setattr(team, field, color)
+                updates.append(field)
+        if updates:
+            team.save(update_fields=updates)
         return Response(TeamSerializer(team, context={"request": request}).data)
 
     def delete(self, request, team_id):

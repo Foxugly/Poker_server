@@ -16,7 +16,10 @@ class TeamSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Team
-        fields = ["id", "name", "owner_email", "created_at", "my_role", "member_count"]
+        fields = [
+            "id", "name", "owner_email", "created_at", "my_role", "member_count",
+            "card_back_color", "felt_color",
+        ]
 
     def get_my_role(self, team) -> str | None:
         user = self.context["request"].user

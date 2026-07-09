@@ -22,6 +22,10 @@ class Team(models.Model):
     name = models.CharField(max_length=120)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_teams")
     created_at = models.DateTimeField(auto_now_add=True)
+    # Appearance customization (P2.6): the team's room theme. Defaults mirror the
+    # standard emerald felt + dark card-back base used by anonymous rooms.
+    card_back_color = models.CharField(max_length=9, default="#143d2f")
+    felt_color = models.CharField(max_length=9, default="#10b981")
     # subscription (Stripe) is added in Phase 2 P2.7 (billing) — additive FK.
 
     def __str__(self):
