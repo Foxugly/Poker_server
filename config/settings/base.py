@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "accounts.apps.AccountsConfig",
+    "teams.apps.TeamsConfig",
     "decks.apps.DecksConfig",
     "rooms.apps.RoomsConfig",
     "realtime.apps.RealtimeConfig",
