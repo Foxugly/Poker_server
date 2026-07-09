@@ -1,5 +1,6 @@
 import re
 
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -162,6 +163,8 @@ class InvitationListCreateView(APIView):
         email = serializer.validated_data["email"]
         if team.memberships.filter(user__email__iexact=email).exists():
             return error_response(code="already_member", detail="That person is already a member.", http_status=400)
+        if team.memberships.count() >= settings.TEAM_MAX_MEMBERS:
+            return error_response(code="team_full", detail="This team has reached its member limit.", http_status=403)
         invitation = Invitation.objects.create(
             team=team,
             email=email,
@@ -198,6 +201,9 @@ class AcceptInvitationView(APIView):
         if request.user.email.lower() != invitation.email.lower():
             return error_response(code="invite_email_mismatch",
                                   detail="Sign in with the email this invitation was sent to.", http_status=403)
+        already_member = invitation.team.memberships.filter(user=request.user).exists()
+        if not already_member and invitation.team.memberships.count() >= settings.TEAM_MAX_MEMBERS:
+            return error_response(code="team_full", detail="This team has reached its member limit.", http_status=403)
         TeamMembership.objects.get_or_create(
             team=invitation.team, user=request.user, defaults={"role": invitation.role}
         )

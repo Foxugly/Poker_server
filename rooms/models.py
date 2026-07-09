@@ -34,6 +34,8 @@ class Room(models.Model):
     # Phase 2: a room tied to a team is members-only and NON-ephemeral (no 8h expiry).
     # Null = free anonymous room (Phase 1 default).
     team = models.ForeignKey("teams.Team", on_delete=models.CASCADE, null=True, blank=True, related_name="rooms")
+    # Hard cap on participants per room (product limit).
+    max_participants = models.PositiveSmallIntegerField(default=20)
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
     expires_at = models.DateTimeField(db_index=True)

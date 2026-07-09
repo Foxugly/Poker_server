@@ -6,6 +6,7 @@ everything *inside* the room happens over the socket (contract §0.5).
 Phase 2: a room may be tied to a Team — then it is members-only (auth required),
 non-ephemeral, and participants are linked to their user (name from the profile).
 """
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -80,7 +81,10 @@ class CreateRoomView(APIView):
             # Apply the team's appearance customization (P2.6) to this room's snapshot.
             snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
-        room = Room(code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot, team=team)
+        room = Room(
+            code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot, team=team,
+            max_participants=settings.ROOM_MAX_PARTICIPANTS,
+        )
         room.touch(save=False)
         room.save()
 
@@ -119,6 +123,8 @@ class JoinRoomView(APIView):
             # Re-join reuses the member's existing participant (no duplicate seats).
             participant = room.participants.filter(user=request.user).first()
             if participant is None:
+                if room.participants.count() >= room.max_participants:
+                    return error_response(code="room_full", detail="This room is full.", http_status=403)
                 participant = Participant.objects.create(
                     room=room, token=generate_token(), display_name=_display_name_for(request.user),
                     role=Role.VOTER, user=request.user,
@@ -129,6 +135,8 @@ class JoinRoomView(APIView):
             username = (serializer.validated_data.get("username") or "").strip()
             if not username:
                 return error_response(code="username_required", detail="A display name is required.", http_status=400)
+            if room.participants.count() >= room.max_participants:
+                return error_response(code="room_full", detail="This room is full.", http_status=403)
             participant = Participant.objects.create(
                 room=room, token=generate_token(), display_name=username, role=Role.VOTER
             )

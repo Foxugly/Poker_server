@@ -1,6 +1,9 @@
+import datetime
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from teams.models import Invitation, Team, TeamMembership, TeamRole
@@ -107,6 +110,21 @@ def test_non_member_cannot_view_team(client, owner):
     sc = APIClient()
     sc.force_authenticate(stranger)
     assert sc.get(f"/api/teams/{team_id}/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_team_member_cap_blocks_accept(client, owner, settings):
+    settings.TEAM_MAX_MEMBERS = 1  # owner alone already fills the team
+    team_id = _create_team(client).json()["id"]
+    bob = _user("bob@example.com", "Bob")
+    inv = Invitation.objects.create(
+        team_id=team_id, email="bob@example.com", role=TeamRole.MEMBER, invited_by=owner,
+        expires_at=timezone.now() + datetime.timedelta(days=1),
+    )
+    bc = APIClient()
+    bc.force_authenticate(bob)
+    resp = bc.post("/api/teams/invitations/accept/", {"token": inv.token}, format="json")
+    assert resp.status_code == 403 and resp.json()["code"] == "team_full"
 
 
 @pytest.mark.django_db

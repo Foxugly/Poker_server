@@ -1,7 +1,18 @@
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from rooms.models import Participant, Role, Room
+
+
+@override_settings(ROOM_MAX_PARTICIPANTS=2)
+@pytest.mark.django_db
+def test_join_rejected_when_room_full(client, standard_deck):
+    # Creator counts as the first seat; cap is 2.
+    code = client.post("/api/rooms", {"username": "Sam"}, format="json").json()["code"]
+    assert client.post(f"/api/rooms/{code}/join", {"username": "Alex"}, format="json").status_code == 200
+    resp = client.post(f"/api/rooms/{code}/join", {"username": "Max"}, format="json")
+    assert resp.status_code == 403 and resp.json()["code"] == "room_full"
 
 
 @pytest.fixture

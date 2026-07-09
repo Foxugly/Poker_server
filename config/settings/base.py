@@ -158,6 +158,9 @@ PUBLIC_MEDIA_BASE_URL = env("PUBLIC_MEDIA_BASE_URL", default=FRONTEND_BASE_URL)
 # --- Rooms lifecycle ---
 # Free anonymous rooms expire after this many hours of inactivity (scope §4).
 ROOM_INACTIVITY_HOURS = env.int("ROOM_INACTIVITY_HOURS", default=8)
+# Hard caps (product): people per room, and members per team (a team feeds a room).
+ROOM_MAX_PARTICIPANTS = env.int("ROOM_MAX_PARTICIPANTS", default=20)
+TEAM_MAX_MEMBERS = env.int("TEAM_MAX_MEMBERS", default=20)
 # Facilitator absence before the takeover guard opens (contract §6.f), in seconds.
 FACILITATOR_GUARD_SECONDS = env.int("FACILITATOR_GUARD_SECONDS", default=60)
 
