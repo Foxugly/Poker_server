@@ -163,6 +163,26 @@ async def test_facilitator_guard_and_takeover():
 
 
 @pytest.mark.django_db(transaction=True)
+async def test_agenda_add_and_select():
+    code, fac_token, _ = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+
+    await fac.send_json_to({"v": 1, "type": "subject.add", "payload": {"text": "Q1"}})
+    await _drain_until(fac, "agenda.updated")
+    await fac.send_json_to({"v": 1, "type": "subject.add", "payload": {"text": "Q2"}})
+    a2 = await _drain_until(fac, "agenda.updated", pred=lambda p: len(p["agenda"]) == 2)
+    agenda = a2["payload"]["agenda"]
+    assert [x["text"] for x in agenda] == ["Q1", "Q2"]
+    assert agenda[0]["status"] == "current" and agenda[1]["status"] == "pending"
+
+    await fac.send_json_to({"v": 1, "type": "subject.select", "payload": {"subjectId": agenda[1]["id"]}})
+    a3 = await _drain_until(fac, "agenda.updated", pred=lambda p: p["agenda"][1]["status"] == "current")
+    assert a3["payload"]["agenda"][1]["status"] == "current" and a3["payload"]["agenda"][0]["status"] == "pending"
+
+    await fac.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
 async def test_facilitator_voluntary_transfer():
     code, fac_token, voter_token = await database_sync_to_async(_make_room)()
     fac, _ = await _join(fac_token, code)

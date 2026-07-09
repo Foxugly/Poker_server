@@ -89,6 +89,64 @@ def set_subject(room, participant, text):
     return text
 
 
+def current_subject_text(room):
+    s = _current_session(room)
+    return s.subject.text if s else ""
+
+
+def build_agenda(room):
+    """The scenario: every subject of the room with its status (current / done / pending)
+    and, when acted, its retained value."""
+    current_id = room.current_session.subject_id if room.current_session_id else None
+    out = []
+    for s in room.subjects.all().order_by("sequence").prefetch_related("sessions__result"):
+        result = None
+        acted = next((se for se in s.sessions.all() if se.state == RoundState.ACTED and hasattr(se, "result")), None)
+        if acted:
+            result = acted.result.chosen_value
+        status = "current" if s.id == current_id else ("done" if result is not None else "pending")
+        out.append({"id": s.id, "text": s.text, "status": status, "result": result})
+    return out
+
+
+def add_subject(room, participant, text):
+    """Add a subject to the scenario. The first one auto-becomes the current vote."""
+    _require_facilitator(room, participant, "subject.add")
+    text = (text or "").strip()
+    if not text:
+        raise RoomError("state.invalid_transition", "Empty subject", "subject.add")
+    seq = room.subjects.count() + 1
+    subject = Subject.objects.create(room=room, text=text, sequence=seq)
+    if room.current_session_id is None:
+        session = VoteSession.objects.create(room=room, subject=subject, state=RoundState.IDLE, facilitator=participant)
+        room.current_session = session
+        room.save(update_fields=["current_session"])
+    room.touch()
+    return subject.id
+
+
+def select_subject(room, participant, subject_id):
+    """Pick a scenario subject to vote on next → resets the round to idle for it."""
+    _require_facilitator(room, participant, "subject.select")
+    subject = room.subjects.filter(id=subject_id).first()
+    if subject is None:
+        raise RoomError("state.invalid_transition", "Unknown subject", "subject.select")
+    session = subject.sessions.exclude(state=RoundState.ACTED).first()
+    if session is None:
+        session = VoteSession.objects.create(room=room, subject=subject, state=RoundState.IDLE, facilitator=participant)
+    else:
+        session.state = RoundState.IDLE
+        session.opened_at = None
+        session.revealed_at = None
+        session.facilitator = participant
+        session.save(update_fields=["state", "opened_at", "revealed_at", "facilitator"])
+        session.votes.all().delete()
+    room.current_session = session
+    room.save(update_fields=["current_session"])
+    room.touch()
+    return subject.text
+
+
 def open_vote(room, participant):
     _require_facilitator(room, participant, "vote.open")
     session = _current_session(room)
@@ -281,6 +339,7 @@ def build_state_sync(participant):
         "myVote": my_vote,
         "result": result,
         "facilitatorPresent": facilitator_present(room),
+        "agenda": build_agenda(room),
     }
     # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e).
     if round_state == RoundState.REVEALED:

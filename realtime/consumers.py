@@ -61,6 +61,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if mtype == "subject.set":
             text = await database_sync_to_async(services.set_subject)(room, participant, payload.get("text", ""))
             await self._broadcast("subject.updated", {"text": text})
+            await self._broadcast_agenda(room)
+        elif mtype == "subject.add":
+            await database_sync_to_async(services.add_subject)(room, participant, payload.get("text", ""))
+            await self._broadcast_agenda(room)
+            await self._broadcast_current_subject(room)
+        elif mtype == "subject.select":
+            text = await database_sync_to_async(services.select_subject)(room, participant, payload.get("subjectId"))
+            await self._broadcast("vote.wasReset", {"nextState": "idle"})
+            await self._broadcast("subject.updated", {"text": text})
+            await self._broadcast_agenda(room)
         elif mtype == "vote.open":
             await database_sync_to_async(services.open_vote)(room, participant)
             await self._broadcast("vote.opened", {})
@@ -75,6 +85,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         elif mtype == "result.act":
             chosen = await database_sync_to_async(services.act_result)(room, participant, payload.get("chosenValue"))
             await self._broadcast("result.acted", {"chosenValue": chosen})
+            await self._broadcast_agenda(room)
         elif mtype == "vote.reset":
             next_state = await database_sync_to_async(services.reset_round)(room, participant)
             await self._broadcast("vote.wasReset", {"nextState": next_state})
@@ -130,6 +141,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def _broadcast_presence(self, room):
         present = await database_sync_to_async(services.facilitator_present)(room)
         await self._broadcast("facilitator.presence", {"present": present})
+
+    async def _broadcast_agenda(self, room):
+        agenda = await database_sync_to_async(services.build_agenda)(room)
+        await self._broadcast("agenda.updated", {"agenda": agenda})
+
+    async def _broadcast_current_subject(self, room):
+        text = await database_sync_to_async(services.current_subject_text)(room)
+        await self._broadcast("subject.updated", {"text": text})
 
     async def _emit(self, mtype, payload, cid=None):
         message = {"v": PROTOCOL_VERSION, "type": mtype, "payload": payload}
