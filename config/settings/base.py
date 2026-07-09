@@ -223,6 +223,13 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 MAGIC_LINK_TTL_MINUTES = env.int("MAGIC_LINK_TTL_MINUTES", default=15)
 
+# Microsoft Graph app-only email (fleet standard, §3.14 GRAPH_* names). When set,
+# accounts.mail routes through Graph; otherwise it falls back to EMAIL_BACKEND.
+GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
+GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")
+GRAPH_CLIENT_SECRET = env("GRAPH_CLIENT_SECRET", default="")
+GRAPH_SENDER = env("GRAPH_SENDER", default="")  # the "from" mailbox (e.g. noreply@foxugly.com)
+
 # --- Cloudflare Turnstile (captcha on register / forgot / magic-link). Gated on
 # the secret: skipped until TURNSTILE_SECRET_KEY is set, then fail-closed. ---
 TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")

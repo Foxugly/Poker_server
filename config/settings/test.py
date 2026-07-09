@@ -5,6 +5,7 @@ DEBUG = False
 # Deterministic, dependency-free tests.
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 CELERY_TASK_ALWAYS_EAGER = True
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
