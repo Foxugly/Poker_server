@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 
 from config.api_errors import error_response
 
+from billing.service import paid_required
+
 from .invitations import send_invitation_email
 from .models import Invitation, Team, TeamMembership, TeamRole
 from .permissions import is_admin, is_member, is_owner, membership_of
@@ -69,6 +71,10 @@ class TeamDetailView(APIView):
             team.name = name
             updates.append("name")
         # Appearance (P2.6): card-back + felt colours, validated as #RRGGBB[AA].
+        # Appearance is a paid feature (P2.7): gated once billing is live.
+        if ("card_back_color" in request.data or "felt_color" in request.data):
+            if (err := paid_required(team)) is not None:
+                return err
         for field in ("card_back_color", "felt_color"):
             if field in request.data:
                 color = (request.data.get(field) or "").strip()

@@ -26,7 +26,12 @@ class Team(models.Model):
     # standard emerald felt + dark card-back base used by anonymous rooms.
     card_back_color = models.CharField(max_length=9, default="#143d2f")
     felt_color = models.CharField(max_length=9, default="#10b981")
-    # subscription (Stripe) is added in Phase 2 P2.7 (billing) — additive FK.
+    # Stripe subscription (P2.7). subscription_status mirrors Stripe: "active"/"trialing"
+    # unlock paid features; "" = never subscribed.
+    stripe_customer_id = models.CharField(max_length=64, blank=True, default="")
+    stripe_subscription_id = models.CharField(max_length=64, blank=True, default="")
+    subscription_status = models.CharField(max_length=32, blank=True, default="")
+    subscription_current_period_end = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.name

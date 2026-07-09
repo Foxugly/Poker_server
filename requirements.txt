@@ -12,6 +12,7 @@ redis==7.4.0
 psycopg[binary]>=3.2,<4
 requests>=2.32,<3
 msal>=1.31,<2
+stripe>=11,<13
 pillow==12.1.1
 drf-spectacular==0.29.0
 sentry-sdk[django]>=2.20,<3

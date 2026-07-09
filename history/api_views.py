@@ -13,6 +13,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.service import paid_required
 from config.api_errors import error_response
 from rooms.models import Result
 from teams.models import Team
@@ -99,6 +100,8 @@ class HistoryEmailView(APIView):
         team = get_object_or_404(Team.objects.prefetch_related("memberships__user"), pk=team_id)
         if not is_admin(team, request.user):
             return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if (err := paid_required(team)) is not None:
+            return err
         parsed = _parse_day(day)
         if parsed is None:
             return error_response(code="invalid_date", detail="Expected YYYY-MM-DD.", http_status=400)

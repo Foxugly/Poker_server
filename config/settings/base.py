@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "realtime.apps.RealtimeConfig",
     "history.apps.HistoryConfig",
     "boards.apps.BoardsConfig",
+    "billing.apps.BillingConfig",
     "health.apps.HealthConfig",
 ]
 
@@ -237,6 +238,13 @@ GRAPH_SENDER = env("GRAPH_SENDER", default="")  # the "from" mailbox (e.g. norep
 # the secret: skipped until TURNSTILE_SECRET_KEY is set, then fail-closed. ---
 TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
 TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
+
+# --- Stripe billing (P2.7). Gated on the secret: billing is "configured" only when
+# STRIPE_SECRET_KEY is set. Until then, team_is_paid() returns True (paid features stay
+# open) and the checkout endpoints return 503. ---
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_PRICE_ID = env("STRIPE_PRICE_ID", default="")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Delegation Poker API",

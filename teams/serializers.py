@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from billing.service import billing_configured, team_is_paid
+
 from .models import Invitation, Team, TeamMembership, TeamRole
 
 
@@ -13,13 +15,22 @@ class TeamSerializer(serializers.ModelSerializer):
     my_role = serializers.SerializerMethodField()
     member_count = serializers.SerializerMethodField()
     owner_email = serializers.EmailField(source="owner.email", read_only=True)
+    is_paid = serializers.SerializerMethodField()
+    billing_enabled = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
         fields = [
             "id", "name", "owner_email", "created_at", "my_role", "member_count",
-            "card_back_color", "felt_color",
+            "card_back_color", "felt_color", "is_paid", "billing_enabled",
+            "subscription_status",
         ]
+
+    def get_is_paid(self, team) -> bool:
+        return team_is_paid(team)
+
+    def get_billing_enabled(self, team) -> bool:
+        return billing_configured()
 
     def get_my_role(self, team) -> str | None:
         user = self.context["request"].user
