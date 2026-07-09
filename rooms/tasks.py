@@ -11,5 +11,8 @@ def expire_stale_rooms():
     Belt-and-braces cleanup: join / WS entry already refuse an expired room
     lazily (Room.is_live); this beat task just flips the flag in the background.
     """
-    count = Room.objects.filter(is_expired=False, expires_at__lt=timezone.now()).update(is_expired=True)
+    # Only free (anonymous) rooms expire; team rooms are persistent.
+    count = Room.objects.filter(
+        is_expired=False, team__isnull=True, expires_at__lt=timezone.now()
+    ).update(is_expired=True)
     return count

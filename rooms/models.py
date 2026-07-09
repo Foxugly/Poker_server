@@ -31,13 +31,16 @@ class Room(models.Model):
     current_session = models.ForeignKey(
         "rooms.VoteSession", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # Phase 2: a room tied to a team is members-only and NON-ephemeral (no 8h expiry).
+    # Null = free anonymous room (Phase 1 default).
+    team = models.ForeignKey("teams.Team", on_delete=models.CASCADE, null=True, blank=True, related_name="rooms")
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
     expires_at = models.DateTimeField(db_index=True)
     is_expired = models.BooleanField(default=False)
 
     def touch(self, *, save=True):
-        """Slide the 8h inactivity window forward (scope §4)."""
+        """Slide the 8h inactivity window forward (scope §4). Team rooms don't expire."""
         now = timezone.now()
         self.last_activity_at = now
         self.expires_at = now + timezone.timedelta(hours=settings.ROOM_INACTIVITY_HOURS)
@@ -46,7 +49,9 @@ class Room(models.Model):
 
     @property
     def is_live(self):
-        return not self.is_expired and self.expires_at > timezone.now()
+        if self.is_expired:
+            return False
+        return self.team_id is not None or self.expires_at > timezone.now()
 
     def __str__(self):
         return self.code

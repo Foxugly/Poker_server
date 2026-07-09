@@ -163,6 +163,24 @@ async def test_facilitator_guard_and_takeover():
 
 
 @pytest.mark.django_db(transaction=True)
+async def test_facilitator_voluntary_transfer():
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, vsync = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    voter_pid = next(p["participantId"] for p in vsync["payload"]["participants"] if p["role"] == "voter")
+    await fac.send_json_to({"v": 1, "type": "facilitator.transfer", "payload": {"targetParticipantId": voter_pid}})
+    changed = await _drain_until(voter, "facilitator.changed")
+    assert changed["payload"]["newFacilitatorId"] == voter_pid
+    assert await database_sync_to_async(_role_of)(voter_token) == Role.FACILITATOR
+    assert await database_sync_to_async(_role_of)(fac_token) == Role.VOTER
+
+    await fac.disconnect()
+    await voter.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
 async def test_unknown_token_rejected():
     code, _, _ = await database_sync_to_async(_make_room)()
     comm = WebsocketCommunicator(URLRouter(websocket_urlpatterns), f"/ws/rooms/{code}/")

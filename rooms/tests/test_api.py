@@ -52,7 +52,7 @@ def test_join_unknown_room_404(client, standard_deck):
 @pytest.mark.django_db
 def test_room_exists_endpoint(client, standard_deck):
     code = client.post("/api/rooms", {"username": "Sam", "title": "Retro"}, format="json").json()["code"]
-    assert client.get(f"/api/rooms/{code}").json() == {"code": code, "roomTitle": "Retro", "exists": True}
+    assert client.get(f"/api/rooms/{code}").json() == {"code": code, "roomTitle": "Retro", "exists": True, "isTeam": False}
     assert client.get("/api/rooms/ZZZZZZ").json()["exists"] is False
 
 

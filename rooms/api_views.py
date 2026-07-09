@@ -2,6 +2,9 @@
 
 HTTP creates/resolves the room and issues the ``participantToken`` + ``deckSnapshot``;
 everything *inside* the room happens over the socket (contract §0.5).
+
+Phase 2: a room may be tied to a Team — then it is members-only (auth required),
+non-ephemeral, and participants are linked to their user (name from the profile).
 """
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -10,7 +13,10 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from decks.models import Deck, VoteType
+from config.api_errors import error_response
+from decks.models import Deck
+from teams.models import Team
+from teams.permissions import is_member
 
 from .api_serializers import CreateRoomSerializer, JoinRoomSerializer
 from .codes import generate_token, generate_unique_code, normalize_code
@@ -21,21 +27,22 @@ DELEGATION_POKER_CODE = "delegation_poker"
 
 
 def _standard_deck():
-    """The single standard Delegation Poker deck used by every free room (Phase 1)."""
     return (
-        Deck.objects.filter(
-            vote_type__code=DELEGATION_POKER_CODE, is_standard=True, is_active=True
-        )
+        Deck.objects.filter(vote_type__code=DELEGATION_POKER_CODE, is_standard=True, is_active=True)
         .select_related("vote_type")
         .first()
     )
 
 
 def _live_room_or_none(code):
-    room = Room.objects.filter(code=normalize_code(code)).first()
+    room = Room.objects.filter(code=normalize_code(code)).select_related("team").first()
     if room is None or not room.is_live:
         return None
     return room
+
+
+def _display_name_for(user) -> str:
+    return (user.display_name or user.email).strip()
 
 
 class CreateRoomView(APIView):
@@ -50,27 +57,32 @@ class CreateRoomView(APIView):
 
         deck = _standard_deck()
         if deck is None:
-            return Response(
-                {"detail": "No standard deck configured."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return Response({"detail": "No standard deck configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        team = None
+        user = None
+        team_id = data.get("team")
+        if team_id is not None:
+            if not request.user.is_authenticated:
+                return error_response(code="auth_required", detail="Sign in to create a team session.", http_status=401)
+            team = get_object_or_404(Team, pk=team_id)
+            if not is_member(team, request.user):
+                return error_response(code="not_a_member", detail="Not a member of this team.", http_status=403)
+            user = request.user
+            display_name = _display_name_for(request.user)
+        else:
+            display_name = (data.get("username") or "").strip()
+            if not display_name:
+                return error_response(code="username_required", detail="A display name is required.", http_status=400)
 
         snapshot = build_deck_snapshot(deck)
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
-        room = Room(
-            code=code,
-            title=data["title"],
-            vote_type=deck.vote_type,
-            deck_snapshot=snapshot,
-        )
+        room = Room(code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot, team=team)
         room.touch(save=False)
         room.save()
 
         facilitator = Participant.objects.create(
-            room=room,
-            token=generate_token(),
-            display_name=data["username"],
-            role=Role.FACILITATOR,
+            room=room, token=generate_token(), display_name=display_name, role=Role.FACILITATOR, user=user
         )
         return Response(
             {
@@ -79,6 +91,7 @@ class CreateRoomView(APIView):
                 "participantToken": facilitator.token,
                 "role": Role.FACILITATOR,
                 "deckSnapshot": snapshot,
+                "isTeam": team is not None,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -94,23 +107,38 @@ class JoinRoomView(APIView):
         if room is None:
             return Response({"detail": "Room not found or expired."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = JoinRoomSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if room.team_id is not None:
+            # Team room: members only, no anonymous guests (scope §4.2).
+            if not request.user.is_authenticated:
+                return error_response(code="auth_required", detail="Sign in to join this team session.", http_status=401)
+            if not is_member(room.team, request.user):
+                return error_response(code="not_a_member", detail="Not a member of this team.", http_status=403)
+            # Re-join reuses the member's existing participant (no duplicate seats).
+            participant = room.participants.filter(user=request.user).first()
+            if participant is None:
+                participant = Participant.objects.create(
+                    room=room, token=generate_token(), display_name=_display_name_for(request.user),
+                    role=Role.VOTER, user=request.user,
+                )
+        else:
+            serializer = JoinRoomSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            username = (serializer.validated_data.get("username") or "").strip()
+            if not username:
+                return error_response(code="username_required", detail="A display name is required.", http_status=400)
+            participant = Participant.objects.create(
+                room=room, token=generate_token(), display_name=username, role=Role.VOTER
+            )
 
-        participant = Participant.objects.create(
-            room=room,
-            token=generate_token(),
-            display_name=serializer.validated_data["username"],
-            role=Role.VOTER,
-        )
         room.touch()
         return Response(
             {
                 "code": room.code,
                 "roomTitle": room.title,
                 "participantToken": participant.token,
-                "role": Role.VOTER,
+                "role": participant.role,
                 "deckSnapshot": room.deck_snapshot,
+                "isTeam": room.team_id is not None,
             },
             status=status.HTTP_200_OK,
         )
@@ -127,5 +155,6 @@ class RoomExistsView(APIView):
                 "code": normalize_code(code),
                 "roomTitle": room.title if room else "",
                 "exists": room is not None,
+                "isTeam": bool(room and room.team_id is not None),
             }
         )

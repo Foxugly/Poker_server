@@ -237,6 +237,24 @@ def promote_facilitator(room, participant):
     participant.save(update_fields=["role"])
 
 
+def transfer_facilitator(room, participant, target_public_id):
+    """Voluntary hand-over (contract §9, Phase 2): the current facilitator gives the
+    role to another present participant and becomes a voter."""
+    _require_facilitator(room, participant, "facilitator.transfer")
+    target = room.participants.filter(public_id=target_public_id).first()
+    if target is None or target.id == participant.id:
+        raise RoomError("state.invalid_transition", "Unknown or self target", "facilitator.transfer")
+    session = _current_session(room)
+    if session:
+        session.facilitator = target
+        session.save(update_fields=["facilitator"])
+    target.role = Role.FACILITATOR
+    target.save(update_fields=["role"])
+    participant.role = Role.VOTER
+    participant.save(update_fields=["role"])
+    return str(target.public_id)
+
+
 def build_state_sync(participant):
     """Full current-state snapshot for a single client (contract §5.1). No history replay."""
     room = participant.room

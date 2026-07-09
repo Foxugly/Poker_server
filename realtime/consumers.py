@@ -79,6 +79,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             next_state = await database_sync_to_async(services.reset_round)(room, participant)
             await self._broadcast("vote.wasReset", {"nextState": next_state})
             await self._broadcast_participation(room)
+        elif mtype == "facilitator.transfer":
+            new_id = await database_sync_to_async(services.transfer_facilitator)(
+                room, participant, payload.get("targetParticipantId")
+            )
+            await self._broadcast("facilitator.changed", {"newFacilitatorId": new_id})
+            await self._broadcast_presence(room)
         elif mtype == "facilitator.claim":
             await self._handle_claim(participant, cid)
         else:
