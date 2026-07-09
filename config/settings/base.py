@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "rooms.apps.RoomsConfig",
     "realtime.apps.RealtimeConfig",
     "history.apps.HistoryConfig",
+    "boards.apps.BoardsConfig",
     "health.apps.HealthConfig",
 ]
 
