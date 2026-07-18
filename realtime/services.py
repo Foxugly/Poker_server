@@ -143,8 +143,9 @@ def select_subject(room, participant, subject_id):
         session.state = RoundState.IDLE
         session.opened_at = None
         session.revealed_at = None
+        session.vote_deadline = None
         session.facilitator = participant
-        session.save(update_fields=["state", "opened_at", "revealed_at", "facilitator"])
+        session.save(update_fields=["state", "opened_at", "revealed_at", "vote_deadline", "facilitator"])
         session.votes.all().delete()
     room.current_session = session
     room.save(update_fields=["current_session"])
@@ -249,9 +250,13 @@ def reset_round(room, participant):
 
 
 def deadline_iso(room):
-    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS."""
+    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS.
+
+    Ne renvoie une valeur que pour un round OPEN : meme si une echeance perimee
+    traine en base (bug de reinitialisation, etc.), aucun round IDLE/REVEALED/ACTED
+    ne peut la divulguer (defense en profondeur)."""
     session = _current_session(room)
-    if session is None or session.vote_deadline is None:
+    if session is None or session.state != RoundState.OPEN or session.vote_deadline is None:
         return None
     return session.vote_deadline.isoformat()
 

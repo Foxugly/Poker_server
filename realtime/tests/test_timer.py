@@ -2,7 +2,6 @@
 import pytest
 from django.utils import timezone
 
-from decks.seed import create_standard_deck
 from realtime import services
 from realtime.services import RoomError
 from rooms.codes import generate_token, generate_unique_code
@@ -101,3 +100,37 @@ def test_reset_clears_the_deadline(room_with_facilitator):
     services.reset_round(room, facilitator)
     assert services._current_session(room).vote_deadline is None
     assert services._current_session(room).state == RoundState.IDLE
+
+
+@pytest.mark.django_db
+def test_select_subject_clears_stale_deadline_after_reveal(room_with_facilitator):
+    """Reveal puis re-selection du meme sujet : la session repasse IDLE et ne doit
+    conserver aucune echeance perimee en base (hygiene de donnees)."""
+    room, facilitator, voter = room_with_facilitator
+    services.set_timer(room, facilitator, True, 30)
+    services.set_subject(room, facilitator, "Recrutement")
+    subject_id = services._current_session(room).subject_id
+    services.open_vote(room, facilitator)
+    assert services._current_session(room).vote_deadline is not None
+    services.cast_vote(room, voter, "4")
+    services.reveal(room, facilitator)
+
+    services.select_subject(room, facilitator, subject_id)
+
+    session = services._current_session(room)
+    assert session.state == RoundState.IDLE
+    assert session.vote_deadline is None
+
+
+@pytest.mark.django_db
+def test_deadline_iso_hides_stale_deadline_outside_open_round(room_with_facilitator):
+    """Defense en profondeur : meme si une echeance traine en base sur une session
+    non-OPEN, deadline_iso() ne doit jamais la divulguer."""
+    room, facilitator, _ = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    session = services._current_session(room)
+    assert session.state == RoundState.IDLE
+    session.vote_deadline = timezone.now() + timezone.timedelta(seconds=30)
+    session.save(update_fields=["vote_deadline"])
+
+    assert services.deadline_iso(room) is None
