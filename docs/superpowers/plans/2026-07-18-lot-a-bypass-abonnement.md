@@ -695,7 +695,7 @@ git commit -m "feat(customuser): champ subscription_bypass + expose team_quota d
 
 **Interfaces:**
 - Consomme : `CustomUser.subscription_bypass` (Task 5).
-- Produit : `customuser.entitlements.UNLIMITED: int`, `user_is_paid(user) -> bool`, `user_quota(user) -> int`, `can_create_team(user) -> bool`. Ces trois fonctions deviennent la **source unique** du verdict de quota.
+- Produit : `customuser.entitlements.UNLIMITED: int`, `user_quota(user) -> int`, `can_create_team(user) -> bool`. Ces deux fonctions deviennent la **source unique** du verdict de quota. Pas de `user_is_paid()` : TM n'a aucun verrou de paiement à interroger, l'ajouter serait de la généralité spéculative — il viendra avec Stripe le jour venu.
 
 **Contexte impératif :** le verdict est aujourd'hui recalculé à trois endroits (`CustomUser.can_create_team()`, l'inline de `perform_create`, l'inline de `get_team_quota`). Si un seul n'est pas repointé, `/me/` et la création de team divergeront.
 
@@ -778,12 +778,6 @@ ces fonctions change.
 # Quota "illimité" : valeur haute plutôt qu'un None, pour que les comparaisons
 # numériques des appelants restent valides sans cas particulier.
 UNLIMITED = 10_000
-
-
-def user_is_paid(user) -> bool:
-    """Aucune facturation sur TM à ce jour : tout compte authentifié est "payant".
-    Existe pour aligner la signature sur billing/service.py côté Poker."""
-    return True
 
 
 def user_quota(user) -> int:
@@ -1431,7 +1425,7 @@ Créer `src/app/core/staff/staff.service.ts`, sur le modèle des autres services
 
 ```ts
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { StaffUser } from './staff.models';
 
@@ -1439,7 +1433,9 @@ import { StaffUser } from './staff.models';
  *  Le serveur applique IsAdminUser ; le guard côté client n'est qu'un masquage. */
 @Injectable({ providedIn: 'root' })
 export class StaffService {
-  constructor(private readonly http: HttpClient = inject(HttpClient)) {}
+  // Injection par constructeur (et non le champ `inject()` habituel) : le repo
+  // n'a pas de TestBed, le spec instancie le service avec un mock via `new`.
+  constructor(private readonly http: HttpClient) {}
 
   search(q: string): Observable<StaffUser[]> {
     return this.http
