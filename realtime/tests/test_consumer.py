@@ -10,6 +10,7 @@ from channels.testing import WebsocketCommunicator
 from django.utils import timezone
 
 from decks.seed import create_standard_deck
+from realtime import services
 from realtime.routing import websocket_urlpatterns
 from rooms.codes import generate_token, generate_unique_code
 from rooms.models import Participant, Role, Room
@@ -236,6 +237,38 @@ async def test_timeout_reveals_on_reconnect_reconciliation():
 
     await fac.disconnect()
     await voter2.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_scheduled_timeout_reveals_without_reconnect(monkeypatch):
+    """The asyncio task scheduled by vote.open (_schedule_timeout/_fire_timeout) must
+    itself fire the reveal -- this is the whole point of the timer feature, and it is
+    distinct from test_timeout_reveals_on_reconnect_reconciliation above, which only
+    exercises the lazy reconciliation on reconnect (no scheduled task involved there:
+    the deadline is backdated directly in DB and a fresh join triggers the catch-up).
+    Deterministic and fast: TIMER_MIN_SECONDS is patched to 0 so the deadline is
+    effectively immediate, no reliance on real-time sleep."""
+    monkeypatch.setattr(services, "TIMER_MIN_SECONDS", 0)
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    await fac.send_json_to({"v": 1, "type": "timer.set", "payload": {"enabled": True, "seconds": 0}})
+    await _drain_until(voter, "timer.changed")
+    await fac.send_json_to({"v": 1, "type": "subject.set", "payload": {"text": "Budget?"}})
+    await _drain_until(voter, "subject.updated")
+    await fac.send_json_to({"v": 1, "type": "vote.open", "payload": {}})
+    await _drain_until(voter, "vote.opened")
+
+    # No disconnect/reconnect anywhere in this test: if this reveals, it can only be
+    # the scheduled asyncio task (_fire_timeout -> _reconcile_timeout), not the
+    # reconnect-time reconciliation path covered by the other test.
+    revealed = await _drain_until(voter, "vote.revealed", limit=10)
+    assert revealed["payload"]["reason"] == "timeout"
+
+    await fac.disconnect()
+    await voter.disconnect()
 
 
 @pytest.mark.django_db(transaction=True)

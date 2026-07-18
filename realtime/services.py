@@ -235,15 +235,30 @@ def reveal_on_timeout(room):
     alors que ce garde protege d'une revelation manuelle prematuree.
     Idempotent : rappelable sans risque, ce dont depend la reconciliation
     paresseuse apres un redemarrage du service.
+
+    Transition atomique (UPDATE conditionnel) : deux appels concurrents (deux
+    taches asyncio dans le meme process, ou deux process ASGI distincts avec
+    chacun son propre dictionnaire de taches) ne doivent PAS tous les deux
+    renvoyer True, sinon `vote.revealed` part deux fois vers la room. Le
+    read-check-write nu (lire l'etat, puis sauvegarder) laisse une fenetre ou
+    les deux lisent OPEN avant que l'un des deux n'ecrive REVEALED.
     """
     session = _current_session(room)
     if session is None or session.state != RoundState.OPEN:
         return False
     if session.vote_deadline is None or timezone.now() < session.vote_deadline:
         return False
+    now = timezone.now()
+    updated = VoteSession.objects.filter(
+        pk=session.pk, state=RoundState.OPEN, vote_deadline__lt=now
+    ).update(state=RoundState.REVEALED, revealed_at=now)
+    if not updated:
+        return False
+    # Garde le cache en memoire (room.current_session) coherent avec la ligne
+    # tout juste ecrite : les appelants relisent l'etat via _current_session(room)
+    # (build_state_sync, revealed_payload...) sans recharger depuis la base.
     session.state = RoundState.REVEALED
-    session.revealed_at = timezone.now()
-    session.save(update_fields=["state", "revealed_at"])
+    session.revealed_at = now
     room.touch()
     return True
 

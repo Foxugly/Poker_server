@@ -5,6 +5,7 @@ the state machine and *rebroadcasts the fact*. Vote values stay secret until rev
 Control intentions are accepted only from the facilitator (authority, contract §0.2).
 """
 import asyncio
+import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -12,6 +13,8 @@ from django.utils import timezone
 
 from . import services
 from .services import RoomError
+
+logger = logging.getLogger("poker")
 
 PROTOCOL_VERSION = 1
 
@@ -76,12 +79,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self._broadcast_current_subject(room)
         elif mtype == "subject.select":
             text = await database_sync_to_async(services.select_subject)(room, participant, payload.get("subjectId"))
+            self._cancel_timeout(room.code)
             await self._broadcast("vote.wasReset", {"nextState": "idle"})
             await self._broadcast("subject.updated", {"text": text})
             await self._broadcast_agenda(room)
         elif mtype == "vote.open":
             deadline = await database_sync_to_async(services.open_vote)(room, participant)
-            await self._broadcast("vote.opened", {"deadline": deadline.isoformat() if deadline else None})
+            deadline_iso = await database_sync_to_async(services.deadline_iso)(room)
+            await self._broadcast("vote.opened", {"deadline": deadline_iso})
             await self._broadcast_participation(room)
             self._schedule_timeout(room.code, deadline)
         elif mtype == "vote.cast":
@@ -89,6 +94,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self._broadcast_participation(room)
         elif mtype == "vote.reveal":
             await database_sync_to_async(services.reveal)(room, participant)
+            self._cancel_timeout(room.code)
             revealed = await database_sync_to_async(services.revealed_payload)(room)
             await self._broadcast("vote.revealed", {**revealed, "reason": "facilitator"})
         elif mtype == "result.act":
@@ -205,8 +211,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self._reconcile_timeout(code)
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("timer_reveal_failed", extra={"room_code": code})
         finally:
-            _timer_tasks.pop(code, None)
+            if _timer_tasks.get(code) is asyncio.current_task():
+                _timer_tasks.pop(code, None)
 
     async def _reconcile_timeout(self, code):
         """Revele si l'echeance est passee. Appelee par la tache programmee ET a la
