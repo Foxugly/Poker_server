@@ -96,7 +96,7 @@ Toute intention **incohérente avec l'état courant** (ex. `vote.cast` en `revea
 | `participation.update` | tous | `{ voted: number, total: number, votedIds: string[] }` — **jamais de valeurs** |
 | `subject.updated` | tous | `{ text }` |
 | `vote.opened` | tous | `{ }` (état → `open`) |
-| `vote.revealed` | tous | `{ votes: [{ participantId, cardValue }], spread: { min, max } }` — **les valeurs n'apparaissent qu'ici** |
+| `vote.revealed` | tous | `{ tally: [{ cardValue, count }], spread: { min, max } }` — **révélation anonyme** : décompte par valeur, aucun lien participant → carte. Seules les valeurs ayant ≥ 1 voix figurent, dans l'ordre du deck. Porte aussi `reason: "timeout" \| "facilitator"`. |
 | `result.acted` | tous | `{ chosenValue }` (état → `acted`) |
 | `vote.wasReset` | tous | `{ nextState: "idle" \| "open" }` |
 | `facilitator.changed` | tous | `{ newFacilitatorId }` |
@@ -124,7 +124,7 @@ Envoyé à un seul client (au `join` initial, à la reconnexion, à l'arrivée d
 ```
 
 - `myVote` = **le vote du client destinataire uniquement** (les autres restent secrets tant que `roundState !== "revealed"`).
-- Si `roundState === "revealed"`, `state.sync` inclut aussi les `votes` complets (un retardataire qui arrive en `revealed` **voit les résultats**, et votera au tour suivant).
+- Si `roundState === "revealed"`, `state.sync` inclut aussi le `tally` (un retardataire qui arrive en `revealed` **voit les résultats**, et votera au tour suivant). Comme `vote.revealed`, il s'agit d'un décompte anonyme : jamais de lien participant → carte.
 
 ---
 
@@ -132,7 +132,7 @@ Envoyé à un seul client (au `join` initial, à la reconnexion, à l'arrivée d
 
 | # | Situation | Règle |
 |---|-----------|-------|
-| a | **Secret des votes** | Aucune valeur avant `reveal`. `participation.update` ne porte que des IDs/compteurs. `myVote` n'est renvoyé qu'à son propriétaire. |
+| a | **Secret des votes** | Aucune valeur avant `reveal`. `participation.update` ne porte que des IDs/compteurs. `myVote` n'est renvoyé qu'à son propriétaire. **Après `reveal`, l'anonymat persiste** : le serveur n'émet qu'un décompte agrégé, jamais de couple participant → carte. Limite inhérente à connaître : avec un seul votant, `participation.update` (qui a voté) et le décompte (quelle carte) se recoupent — l'anonymat n'est atteignable qu'à partir de deux votants. |
 | b | **Ordering / idempotence** | Le serveur **ignore** toute action incohérente avec l'état (ex. `vote.cast` hors `open`). Re-voter la même carte = no-op ; voter une autre carte en `open` = remplacement. |
 | c | **Révéler sans quorum** | Autorisé dès ≥ 1 vote. Un absent ne bloque pas la salle. |
 | d | **Quitter avant révélation** | Le vote déjà émis **reste compté** (il fait partie du tour). `participant.left` diffusé, mais le vote persiste. |
