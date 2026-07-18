@@ -44,10 +44,27 @@ def test_me_exposes_subscription_bypass():
 
 @pytest.mark.django_db
 def test_patch_me_cannot_self_grant_bypass():
-    """Auto-élévation : le champ est read-only, un PATCH doit être ignoré."""
+    """PATCH /api/auth/me/ ne permet pas de s'auto-accorder le bypass : l'endpoint
+    utilise ProfileUpdateSerializer (fields=["display_name"] uniquement), donc
+    subscription_bypass n'est jamais pris en compte en écriture par cette route."""
     user = User.objects.create_user(email="esc@example.com", password="pw12345678")
     r = _client(user).patch("/api/auth/me/", {"subscription_bypass": True}, format="json")
     assert r.status_code == 200
+    user.refresh_from_db()
+    assert user.subscription_bypass is False
+
+
+@pytest.mark.django_db
+def test_me_serializer_ignores_bypass_on_write():
+    """Si UserMeSerializer était un jour réutilisé en écriture, subscription_bypass
+    resterait ignoré grâce à read_only_fields (défense en profondeur)."""
+    from accounts.api_serializers import UserMeSerializer
+
+    user = User.objects.create_user(email="direct@example.com", password="pw12345678")
+    assert user.subscription_bypass is False
+    serializer = UserMeSerializer(user, data={"subscription_bypass": True}, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
     user.refresh_from_db()
     assert user.subscription_bypass is False
 

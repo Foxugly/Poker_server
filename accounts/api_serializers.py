@@ -85,8 +85,12 @@ class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         # is_staff/is_superuser read-only so the SPA can gate an admin link client-side.
-        # subscription_bypass read-only too: read_only_fields is what prevents a
-        # PATCH /api/auth/me/ from becoming a self-elevation vector.
+        # subscription_bypass read-only too, but note this serializer is only ever
+        # used for reads (MeApiView.get, build_token_response_for_user); the actual
+        # PATCH /api/auth/me/ write path uses ProfileUpdateSerializer below, whose
+        # narrow fields=["display_name"] is what really blocks self-elevation.
+        # read_only_fields here is defense in depth, protecting only if this
+        # serializer is ever repurposed for writes.
         fields = [
             "id", "email", "display_name", "is_active", "email_confirmed",
             "is_staff", "is_superuser", "subscription_bypass",
