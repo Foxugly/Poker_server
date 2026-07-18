@@ -54,8 +54,8 @@ class User(AbstractUser):
     email_confirmed = models.BooleanField(default=False)
     # Accès offert : accorde tous les droits payants sans souscription Stripe
     # (spec lot A). Distinct de is_staff, qui n'accorde AUCUN droit métier.
-    # Sera lu et court-circuité dans billing/service.py lors de l'implémentation
-    # des contrôles d'accès payants, ne doit pas être consulté ailleurs.
+    # Lu et court-circuité dans billing/service.py (user_is_paid() / user_quota()),
+    # ne doit pas être consulté ailleurs.
     subscription_bypass = models.BooleanField(default=False)
     # Audit seul, aucun effet fonctionnel : pourquoi et quand l'accès a été offert.
     bypass_note = models.CharField(max_length=200, blank=True)
