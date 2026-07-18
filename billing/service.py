@@ -7,6 +7,10 @@ from django.utils import timezone
 # Stripe statuses that grant access.
 PAID_STATUSES = {"active", "trialing"}
 
+# Quota "illimité" : valeur haute plutôt qu'un None, pour que les comparaisons
+# numériques des appelants restent valides sans cas particulier.
+UNLIMITED = 10_000
+
 
 def billing_configured() -> bool:
     if not settings.STRIPE_SECRET_KEY:
@@ -50,17 +54,23 @@ def _active_subscription(user):
 
 
 def user_is_paid(user) -> bool:
-    """Whether a user may use paid features (own teams). Inert (True) until Stripe is
-    configured; then requires an active subscription."""
+    """Whether a user may use paid features (own teams). An offered account
+    (subscription_bypass) always passes. Inert (True) until Stripe is configured;
+    then requires an active subscription."""
+    if getattr(user, "subscription_bypass", False):
+        return True
     if not billing_configured():
         return True
     return _active_subscription(user) is not None
 
 
 def user_quota(user) -> int:
-    """Max number of teams the user may own. Unlimited (large) when billing is off."""
+    """Max number of teams the user may own. Unlimited for offered accounts and
+    while billing is off."""
+    if getattr(user, "subscription_bypass", False):
+        return UNLIMITED
     if not billing_configured():
-        return 10_000
+        return UNLIMITED
     sub = _active_subscription(user)
     return quota_for_plan(sub.plan) if sub else 0
 

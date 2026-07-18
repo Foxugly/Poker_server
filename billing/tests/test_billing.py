@@ -81,3 +81,37 @@ def test_price_and_plan_mapping():
     assert plan_for_price("price_1m") == ("team1", "monthly")
     assert plan_for_price("nope") == (None, None)
     assert quota_for_plan("team5") == 5
+
+
+# ---------------------------------------------------------------- bypass (lot A)
+
+@override_settings(STRIPE_SECRET_KEY="sk_test", STRIPE_PRICES=PRICES)
+@pytest.mark.django_db
+def test_bypass_grants_paid_and_unlimited_quota(owner):
+    # Billing configuré, aucune souscription : sans bypass l'accès est fermé.
+    assert user_is_paid(owner) is False and user_quota(owner) == 0
+    owner.subscription_bypass = True
+    owner.save()
+    assert user_is_paid(owner) is True
+    assert user_quota(owner) == 10_000
+
+
+@override_settings(STRIPE_SECRET_KEY="sk_test", STRIPE_PRICES=PRICES)
+@pytest.mark.django_db
+def test_bypass_owner_makes_team_paid(owner):
+    from billing.service import team_is_paid
+
+    team = Team.objects.create(name="T", owner=owner)
+    assert team_is_paid(team) is False
+    owner.subscription_bypass = True
+    owner.save()
+    assert team_is_paid(team) is True
+
+
+@override_settings(STRIPE_SECRET_KEY="sk_test", STRIPE_PRICES=PRICES)
+@pytest.mark.django_db
+def test_bypass_allows_team_creation_through_api(owner):
+    owner.subscription_bypass = True
+    owner.save()
+    r = _client(owner).post("/api/teams/", {"name": "A"}, format="json")
+    assert r.status_code == 201, r.json()
