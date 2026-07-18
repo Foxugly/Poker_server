@@ -52,6 +52,13 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=50, blank=True)
     # Email ownership gate (Phase 2 auth). Present now so the shape matches the fleet.
     email_confirmed = models.BooleanField(default=False)
+    # Accès offert : accorde tous les droits payants sans souscription Stripe
+    # (spec lot A). Distinct de is_staff, qui n'accorde AUCUN droit métier.
+    # Court-circuité dans billing/service.py, jamais lu ailleurs.
+    subscription_bypass = models.BooleanField(default=False)
+    # Audit seul, aucun effet fonctionnel : pourquoi et quand l'accès a été offert.
+    bypass_note = models.CharField(max_length=200, blank=True)
+    bypass_granted_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
