@@ -117,6 +117,17 @@ class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(write_only=True, help_text="Refresh token to invalidate")
 
 
+class StaffUserSerializer(serializers.ModelSerializer):
+    """Vue staff d'un compte : identité + état de l'accès offert. Seuls
+    subscription_bypass et bypass_note sont mutables ; bypass_granted_at est
+    horodaté par la vue, jamais transmis par le client."""
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "display_name", "subscription_bypass", "bypass_note", "bypass_granted_at"]
+        read_only_fields = ["id", "email", "display_name", "bypass_granted_at"]
+
+
 def build_token_response_for_user(user: User) -> dict:
     refresh = RefreshToken.for_user(user)
     return {
