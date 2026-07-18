@@ -17,7 +17,9 @@ Un timer **optionnel**, contrôlé par le facilitateur.
 - À l'ouverture du vote, le serveur calcule l'échéance et la diffuse ; le client affiche le décompte.
 - À zéro, le **serveur** gèle les votes et révèle. Le client ne décide de rien : il affiche.
 
-Défaut : **désactivé**, durée **60 s** quand on l'active.
+Défaut : **désactivé**, durée **10 s** quand on l'active. Durées admises : **10 à 60 secondes, par pas
+de 5** — soit onze valeurs (10, 15, 20 … 60). Le pas contraint l'UI à un sélecteur simple plutôt qu'à
+une saisie libre, et évite les durées arbitraires d'un client modifié.
 
 ## Autorité du serveur
 
@@ -54,7 +56,7 @@ ancien ignore les champs qu'il ne connaît pas et continue de fonctionner sans t
 **Nouvelle intention client** (facilitateur uniquement, comme `vote.open`) :
 
 - `timer.set` → `{enabled: bool, seconds: int}`. Persisté sur la `Room`, donc conservé d'un round à
-  l'autre. Bornes serveur : 10 à 600 s.
+  l'autre. Le serveur arrondit au multiple de 5 le plus proche puis borne à 10–60 s.
 
 **Champs ajoutés aux événements existants :**
 

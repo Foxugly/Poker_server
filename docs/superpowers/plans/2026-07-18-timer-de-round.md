@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **Le serveur fait autorité sur l'échéance.** Le client affiche, il ne décide jamais. Un vote reçu après l'échéance est refusé côté serveur même si le client affiche encore du temps.
-- **Bornes de durée : 10 à 600 secondes.** Défaut `timer_enabled=False`, `timer_seconds=60`.
+- **Durées admises : 10 à 60 secondes, par pas de 5** (onze valeurs : 10, 15, 20 … 60). Le serveur arrondit au multiple de 5 le plus proche, puis borne. Défaut `timer_enabled=False`, `timer_seconds=10`.
 - **Réglage porté par la `Room`**, pas par le round : il persiste d'un round à l'autre.
 - **Protocole rétrocompatible.** `PROTOCOL_VERSION` reste à `1` : on n'ajoute que des champs optionnels et une intention. Un client ancien doit continuer de fonctionner sans timer.
 - **Réutiliser l'événement `vote.revealed` existant** pour la révélation à échéance, enrichi de `reason: "timeout" | "facilitator"`. Ne pas créer un second chemin de révélation côté client.
@@ -55,9 +55,9 @@ from rooms.models import RoundState
 
 
 @pytest.mark.django_db
-def test_timer_defaults_to_disabled(room_with_facilitator):
+def test_timer_defaults_to_disabled_at_ten_seconds(room_with_facilitator):
     room, facilitator, _ = room_with_facilitator
-    assert room.timer_enabled is False and room.timer_seconds == 60
+    assert room.timer_enabled is False and room.timer_seconds == 10
 
 
 @pytest.mark.django_db
@@ -71,7 +71,15 @@ def test_set_timer_requires_facilitator(room_with_facilitator):
 def test_set_timer_clamps_out_of_range(room_with_facilitator):
     room, facilitator, _ = room_with_facilitator
     assert services.set_timer(room, facilitator, True, 5)["seconds"] == 10
-    assert services.set_timer(room, facilitator, True, 9999)["seconds"] == 600
+    assert services.set_timer(room, facilitator, True, 9999)["seconds"] == 60
+
+
+@pytest.mark.django_db
+def test_set_timer_snaps_to_five_second_steps(room_with_facilitator):
+    room, facilitator, _ = room_with_facilitator
+    assert services.set_timer(room, facilitator, True, 37)["seconds"] == 35
+    assert services.set_timer(room, facilitator, True, 38)["seconds"] == 40
+    assert services.set_timer(room, facilitator, True, 15)["seconds"] == 15
 
 
 @pytest.mark.django_db
@@ -132,8 +140,9 @@ Dans `rooms/models.py`, dans `Room`, après `max_participants` :
 ```python
     # Timer de round (optionnel) : le facilitateur l'active et regle sa duree.
     # Porte par la room et non par le round, pour persister d'un round a l'autre.
+    # Duree bornee 10-60 s par pas de 5, normalisee cote serveur (services.set_timer).
     timer_enabled = models.BooleanField(default=False)
-    timer_seconds = models.PositiveSmallIntegerField(default=60)
+    timer_seconds = models.PositiveSmallIntegerField(default=10)
 ```
 
 et dans `VoteSession`, après `revealed_at` :
@@ -150,20 +159,23 @@ Dans `realtime/services.py`, ajouter les bornes en tête de module :
 
 ```python
 TIMER_MIN_SECONDS = 10
-TIMER_MAX_SECONDS = 600
+TIMER_MAX_SECONDS = 60
+TIMER_STEP_SECONDS = 5
 ```
 
 puis la fonction de réglage :
 
 ```python
 def set_timer(room, participant, enabled, seconds):
-    """Reglage du timer par le facilitateur. La duree est bornee cote serveur :
-    un client ne peut pas imposer 0 s ni une valeur absurde."""
+    """Reglage du timer par le facilitateur. La duree est normalisee cote serveur
+    (arrondi au multiple de 5 le plus proche, puis bornage 10-60) : un client
+    modifie ne peut imposer ni 0 s, ni une valeur absurde, ni un pas hors grille."""
     _require_facilitator(room, participant, "timer.set")
     try:
         seconds = int(seconds)
     except (TypeError, ValueError):
         seconds = room.timer_seconds
+    seconds = round(seconds / TIMER_STEP_SECONDS) * TIMER_STEP_SECONDS
     seconds = max(TIMER_MIN_SECONDS, min(TIMER_MAX_SECONDS, seconds))
     room.timer_enabled = bool(enabled)
     room.timer_seconds = seconds
@@ -508,7 +520,7 @@ Dans le service temps réel, conserver `deadline` et `timer` dans l'état de la 
 
 Dans `room.component.ts`, exposer un signal de secondes restantes, rafraîchi par un `setInterval` de 1 s **démarré uniquement quand une échéance existe** et arrêté au reveal comme à la destruction du composant (`DestroyRef`). Afficher le décompte près du bloc de vote. Aucune logique de révélation côté client : quand le serveur envoie `vote.revealed`, l'UI suit, qu'il ait mis `reason: "timeout"` ou `"facilitator"`.
 
-Ajouter, visible du seul facilitateur, un interrupteur d'activation et un champ de durée en secondes, émettant `timer.set`. Bornes côté UI : 10 à 600, cohérentes avec le serveur, sans s'y substituer.
+Ajouter, visible du seul facilitateur, un interrupteur d'activation et un sélecteur de durée émettant `timer.set`. Le pas de 5 s impose un **sélecteur de valeurs discrètes** (les onze valeurs 10, 15 … 60) plutôt qu'une saisie libre — c'est plus simple à utiliser et ça rend impossible une valeur hors grille. Le serveur normalise de toute façon : l'UI ne s'y substitue pas.
 
 - [ ] **Step 5 : clés i18n dans les cinq catalogues**
 
