@@ -1,6 +1,7 @@
 """Administration staff des comptes (spec lot A §A.4). Surface volontairement
 minimale : rechercher un compte et basculer son accès offert. Toute autre
 édition passe par l'admin Django."""
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions
@@ -35,6 +36,7 @@ class StaffUserDetailView(APIView):
 
     permission_classes = [permissions.IsAdminUser]
 
+    @transaction.atomic
     def patch(self, request, pk):
         user = get_object_or_404(User, pk=pk)
         was_granted = user.subscription_bypass
@@ -47,11 +49,14 @@ class StaffUserDetailView(APIView):
             user.bypass_granted_at = timezone.now()
             user.save(update_fields=["bypass_granted_at"])
         # Journal append-only : l'etat courant ne dit pas QUI a bascule le flag.
+        # La bascule et l'écriture du journal partagent la même transaction
+        # (@transaction.atomic) : si l'une échoue, l'autre est annulée avec elle.
         if user.subscription_bypass != was_granted:
             BypassGrantLog.objects.create(
                 actor=request.user,
                 actor_label=request.user.email,
                 target=user,
+                target_label=user.email,
                 granted=user.subscription_bypass,
                 note=user.bypass_note,
             )

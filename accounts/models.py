@@ -110,8 +110,13 @@ class BypassGrantLog(models.Model):
     # Snapshot de l'email : la trace survit a la suppression du compte staff.
     actor_label = models.CharField(max_length=254, blank=True)
     target = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bypass_grants_received"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_received",
     )
+    # Snapshot de l'email : la trace survit a la suppression du compte cible.
+    target_label = models.CharField(max_length=254, blank=True)
     granted = models.BooleanField()  # True = octroi, False = revocation
     note = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -121,4 +126,4 @@ class BypassGrantLog(models.Model):
 
     def __str__(self):
         verb = "grant" if self.granted else "revoke"
-        return f"{verb} #{self.target_id} by {self.actor_label}"
+        return f"{verb} {self.target_label} by {self.actor_label}"

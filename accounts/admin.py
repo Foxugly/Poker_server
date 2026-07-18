@@ -29,10 +29,10 @@ class UserAdmin(BaseUserAdmin):
 class BypassGrantLogAdmin(admin.ModelAdmin):
     """Journal append-only : consultable, jamais modifiable depuis l'admin."""
 
-    list_display = ("created_at", "target", "granted", "actor_label", "note")
+    list_display = ("created_at", "target", "target_label", "granted", "actor_label", "note")
     list_filter = ("granted", "created_at")
-    search_fields = ("actor_label", "target__email", "note")
-    readonly_fields = ("actor", "actor_label", "target", "granted", "note", "created_at")
+    search_fields = ("actor_label", "target_label", "target__email", "note")
+    readonly_fields = ("actor", "actor_label", "target", "target_label", "granted", "note", "created_at")
 
     def has_add_permission(self, request):
         return False

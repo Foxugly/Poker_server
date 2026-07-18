@@ -121,3 +121,15 @@ def test_log_survives_actor_deletion(staff, member):
     staff.delete()
     row = BypassGrantLog.objects.get()
     assert row.actor_id is None and row.actor_label == "staff@example.com"
+
+
+@pytest.mark.django_db
+def test_log_survives_target_deletion(staff, member):
+    from accounts.models import BypassGrantLog
+
+    _client(staff).patch(
+        f"/api/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json"
+    )
+    member.delete()
+    row = BypassGrantLog.objects.get()
+    assert row.target_id is None and row.target_label == "member@example.com"
