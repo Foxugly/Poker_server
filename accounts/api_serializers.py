@@ -85,8 +85,16 @@ class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         # is_staff/is_superuser read-only so the SPA can gate an admin link client-side.
-        fields = ["id", "email", "display_name", "is_active", "email_confirmed", "is_staff", "is_superuser"]
-        read_only_fields = ["id", "email", "is_active", "email_confirmed", "is_staff", "is_superuser"]
+        # subscription_bypass read-only too: read_only_fields is what prevents a
+        # PATCH /api/auth/me/ from becoming a self-elevation vector.
+        fields = [
+            "id", "email", "display_name", "is_active", "email_confirmed",
+            "is_staff", "is_superuser", "subscription_bypass",
+        ]
+        read_only_fields = [
+            "id", "email", "is_active", "email_confirmed",
+            "is_staff", "is_superuser", "subscription_bypass",
+        ]
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
