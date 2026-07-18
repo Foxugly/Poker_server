@@ -5,6 +5,8 @@ wraps these with ``database_sync_to_async``. Server is the source of truth: ever
 mutation validates the state machine and raises ``RoomError`` on an illegal move
 (contract §0.1, §6.b) rather than applying it.
 """
+from collections import Counter
+
 from django.conf import settings
 from django.utils import timezone
 
@@ -20,6 +22,11 @@ from rooms.models import (
 )
 
 
+TIMER_MIN_SECONDS = 10
+TIMER_MAX_SECONDS = 60
+TIMER_STEP_SECONDS = 5
+
+
 class RoomError(Exception):
     def __init__(self, code, message="", rejected_type=None):
         super().__init__(message or code)
@@ -29,7 +36,11 @@ class RoomError(Exception):
 
 
 def _card_values(room):
-    return {card["value"] for card in room.deck_snapshot.get("cards", [])}
+    """Deck values, in deck order (``deck_snapshot["cards"]`` is built already sorted
+    by ``Card.order`` — see ``rooms.snapshot.build_deck_snapshot``). Returned as a
+    list, not a set: callers that display a per-value tally (``revealed_payload``)
+    depend on this order being stable across reveals."""
+    return [card["value"] for card in room.deck_snapshot.get("cards", [])]
 
 
 def resolve_participant(code, token):
@@ -44,6 +55,15 @@ def resolve_participant(code, token):
     if not participant.room.is_live:
         return None
     return participant
+
+
+def room_by_code(code):
+    """code → room, or None if unknown/expired. Used by the consumer's timeout
+    reconciliation, which has no participant/token in hand (background task)."""
+    room = Room.objects.filter(code=code).first()
+    if room is None or not room.is_live:
+        return None
+    return room
 
 
 def set_connected(participant, connected):
@@ -138,13 +158,32 @@ def select_subject(room, participant, subject_id):
         session.state = RoundState.IDLE
         session.opened_at = None
         session.revealed_at = None
+        session.vote_deadline = None
         session.facilitator = participant
-        session.save(update_fields=["state", "opened_at", "revealed_at", "facilitator"])
+        session.save(update_fields=["state", "opened_at", "revealed_at", "vote_deadline", "facilitator"])
         session.votes.all().delete()
     room.current_session = session
     room.save(update_fields=["current_session"])
     room.touch()
     return subject.text
+
+
+def set_timer(room, participant, enabled, seconds):
+    """Reglage du timer par le facilitateur. La duree est normalisee cote serveur
+    (arrondi au multiple de 5 le plus proche, puis bornage 10-60) : un client
+    modifie ne peut imposer ni 0 s, ni une valeur absurde, ni un pas hors grille."""
+    _require_facilitator(room, participant, "timer.set")
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        seconds = room.timer_seconds
+    seconds = round(seconds / TIMER_STEP_SECONDS) * TIMER_STEP_SECONDS
+    seconds = max(TIMER_MIN_SECONDS, min(TIMER_MAX_SECONDS, seconds))
+    room.timer_enabled = bool(enabled)
+    room.timer_seconds = seconds
+    room.save(update_fields=["timer_enabled", "timer_seconds"])
+    room.touch()
+    return {"enabled": room.timer_enabled, "seconds": room.timer_seconds}
 
 
 def open_vote(room, participant):
@@ -156,14 +195,22 @@ def open_vote(room, participant):
         raise RoomError("state.invalid_transition", "Not idle", "vote.open")
     session.state = RoundState.OPEN
     session.opened_at = timezone.now()
-    session.save(update_fields=["state", "opened_at"])
+    session.vote_deadline = (
+        session.opened_at + timezone.timedelta(seconds=room.timer_seconds)
+        if room.timer_enabled
+        else None
+    )
+    session.save(update_fields=["state", "opened_at", "vote_deadline"])
     room.touch()
+    return session.vote_deadline
 
 
 def cast_vote(room, participant, card_value):
     session = _current_session(room)
     if session is None or session.state != RoundState.OPEN:
         raise RoomError("state.invalid_transition", "Voting is not open", "vote.cast")
+    if session.vote_deadline is not None and timezone.now() > session.vote_deadline:
+        raise RoomError("state.invalid_transition", "Voting time is over", "vote.cast")
     if card_value not in _card_values(room):
         raise RoomError("state.invalid_transition", "Unknown card value", "vote.cast")
     Vote.objects.update_or_create(
@@ -183,6 +230,43 @@ def reveal(room, participant):
     session.revealed_at = timezone.now()
     session.save(update_fields=["state", "revealed_at"])
     room.touch()
+
+
+def reveal_on_timeout(room):
+    """Revele si l'echeance est depassee et que le round est encore ouvert.
+    Renvoie True si une revelation a bien eu lieu, False sinon.
+
+    Volontairement sans controle de facilitateur (c'est le serveur qui agit) et
+    sans le garde "No votes yet" de reveal() : une expiration est deliberee,
+    alors que ce garde protege d'une revelation manuelle prematuree.
+    Idempotent : rappelable sans risque, ce dont depend la reconciliation
+    paresseuse apres un redemarrage du service.
+
+    Transition atomique (UPDATE conditionnel) : deux appels concurrents (deux
+    taches asyncio dans le meme process, ou deux process ASGI distincts avec
+    chacun son propre dictionnaire de taches) ne doivent PAS tous les deux
+    renvoyer True, sinon `vote.revealed` part deux fois vers la room. Le
+    read-check-write nu (lire l'etat, puis sauvegarder) laisse une fenetre ou
+    les deux lisent OPEN avant que l'un des deux n'ecrive REVEALED.
+    """
+    session = _current_session(room)
+    if session is None or session.state != RoundState.OPEN:
+        return False
+    if session.vote_deadline is None or timezone.now() < session.vote_deadline:
+        return False
+    now = timezone.now()
+    updated = VoteSession.objects.filter(
+        pk=session.pk, state=RoundState.OPEN, vote_deadline__lt=now
+    ).update(state=RoundState.REVEALED, revealed_at=now)
+    if not updated:
+        return False
+    # Garde le cache en memoire (room.current_session) coherent avec la ligne
+    # tout juste ecrite : les appelants relisent l'etat via _current_session(room)
+    # (build_state_sync, revealed_payload...) sans recharger depuis la base.
+    session.state = RoundState.REVEALED
+    session.revealed_at = now
+    room.touch()
+    return True
 
 
 def act_result(room, participant, chosen_value):
@@ -211,9 +295,31 @@ def reset_round(room, participant):
     session.state = RoundState.IDLE
     session.opened_at = None
     session.revealed_at = None
-    session.save(update_fields=["state", "opened_at", "revealed_at"])
+    session.vote_deadline = None
+    session.save(update_fields=["state", "opened_at", "revealed_at", "vote_deadline"])
     room.touch()
     return "idle"
+
+
+def open_deadline(room):
+    """Echeance (datetime) du round OPEN courant, ou None.
+
+    Ne renvoie une valeur que pour un round OPEN : meme si une echeance perimee
+    traine en base (bug de reinitialisation, etc.), aucun round IDLE/REVEALED/ACTED
+    ne peut la divulguer (defense en profondeur). Sert de base a deadline_iso() et,
+    cote consumer, a decider s'il faut reprogrammer une tache de revelation a la
+    reconnexion (une tache en memoire ne survit pas a un redemarrage du service,
+    l'echeance en base si)."""
+    session = _current_session(room)
+    if session is None or session.state != RoundState.OPEN or session.vote_deadline is None:
+        return None
+    return session.vote_deadline
+
+
+def deadline_iso(room):
+    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS."""
+    deadline = open_deadline(room)
+    return deadline.isoformat() if deadline is not None else None
 
 
 def participation(room):
@@ -228,15 +334,25 @@ def participation(room):
 
 
 def revealed_payload(room):
-    """Vote values — ONLY ever called in REVEALED state (secret-of-votes, contract §6.a)."""
+    """Decompte anonyme des votes — ONLY ever called in REVEALED state
+    (secret-of-votes, contract §6.a).
+
+    Ne renvoie AUCUN lien participant -> carte : l'anonymat s'obtient en n'emettant
+    pas la donnee, pas en la masquant cote client (une trame WS est lisible dans les
+    outils de developpement du navigateur). Seules les valeurs ayant au moins une
+    voix figurent dans le decompte, dans l'ordre du deck.
+    """
     session = _current_session(room)
-    votes = list(
-        Vote.objects.filter(session=session).select_related("participant")
-    )
-    items = [{"participantId": str(v.participant.public_id), "cardValue": v.card_value} for v in votes]
+    votes = list(Vote.objects.filter(session=session))
+    counts = Counter(v.card_value for v in votes)
+    tally = [
+        {"cardValue": value, "count": counts[value]}
+        for value in _card_values(room)
+        if counts.get(value)
+    ]
     numeric = [int(v.card_value) for v in votes if v.card_value.isdigit()]
     spread = {"min": min(numeric), "max": max(numeric)} if numeric else {"min": None, "max": None}
-    return {"votes": items, "spread": spread}
+    return {"tally": tally, "spread": spread}
 
 
 def participants_list(room):
@@ -340,8 +456,12 @@ def build_state_sync(participant):
         "result": result,
         "facilitatorPresent": facilitator_present(room),
         "agenda": build_agenda(room),
+        "deadline": deadline_iso(room),
+        "timer": {"enabled": room.timer_enabled, "seconds": room.timer_seconds},
     }
-    # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e).
+    # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e) — the
+    # anonymous tally only, same as everyone else post-reveal (no participant->card
+    # link, ever).
     if round_state == RoundState.REVEALED:
-        payload["votes"] = revealed_payload(room)["votes"]
+        payload["tally"] = revealed_payload(room)["tally"]
     return payload

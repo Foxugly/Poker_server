@@ -52,6 +52,14 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=50, blank=True)
     # Email ownership gate (Phase 2 auth). Present now so the shape matches the fleet.
     email_confirmed = models.BooleanField(default=False)
+    # Accès offert : accorde tous les droits payants sans souscription Stripe
+    # (spec lot A). Distinct de is_staff, qui n'accorde AUCUN droit métier.
+    # Lu et court-circuité dans billing/service.py (user_is_paid() / user_quota()),
+    # ne doit pas être consulté ailleurs.
+    subscription_bypass = models.BooleanField(default=False)
+    # Audit seul, aucun effet fonctionnel : pourquoi et quand l'accès a été offert.
+    bypass_note = models.CharField(max_length=200, blank=True)
+    bypass_granted_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -83,3 +91,39 @@ class MagicLinkToken(models.Model):
     def consume(self):
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+
+class BypassGrantLog(models.Model):
+    """Journal append-only des octrois/revocations d'acces offert (spec lot A-bis).
+
+    Le User porte l'ETAT courant (subscription_bypass / bypass_note / bypass_granted_at) ;
+    ce modele porte l'HISTOIRE, y compris l'acteur, que l'etat courant ne dit pas.
+    Jamais modifie ni supprime : une revocation ajoute une ligne, elle n'en efface aucune.
+    """
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_made",
+    )
+    # Snapshot de l'email : la trace survit a la suppression du compte staff.
+    actor_label = models.CharField(max_length=254, blank=True)
+    target = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_received",
+    )
+    # Snapshot de l'email : la trace survit a la suppression du compte cible.
+    target_label = models.CharField(max_length=254, blank=True)
+    granted = models.BooleanField()  # True = octroi, False = revocation
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        verb = "grant" if self.granted else "revoke"
+        return f"{verb} {self.target_label} by {self.actor_label}"

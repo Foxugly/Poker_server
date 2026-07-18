@@ -85,8 +85,20 @@ class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         # is_staff/is_superuser read-only so the SPA can gate an admin link client-side.
-        fields = ["id", "email", "display_name", "is_active", "email_confirmed", "is_staff", "is_superuser"]
-        read_only_fields = ["id", "email", "is_active", "email_confirmed", "is_staff", "is_superuser"]
+        # subscription_bypass read-only too, but note this serializer is only ever
+        # used for reads (MeApiView.get, build_token_response_for_user); the actual
+        # PATCH /api/auth/me/ write path uses ProfileUpdateSerializer below, whose
+        # narrow fields=["display_name"] is what really blocks self-elevation.
+        # read_only_fields here is defense in depth, protecting only if this
+        # serializer is ever repurposed for writes.
+        fields = [
+            "id", "email", "display_name", "is_active", "email_confirmed",
+            "is_staff", "is_superuser", "subscription_bypass",
+        ]
+        read_only_fields = [
+            "id", "email", "is_active", "email_confirmed",
+            "is_staff", "is_superuser", "subscription_bypass",
+        ]
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
@@ -103,6 +115,17 @@ class LoginResponseSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(write_only=True, help_text="Refresh token to invalidate")
+
+
+class StaffUserSerializer(serializers.ModelSerializer):
+    """Vue staff d'un compte : identité + état de l'accès offert. Seuls
+    subscription_bypass et bypass_note sont mutables ; bypass_granted_at est
+    horodaté par la vue, jamais transmis par le client."""
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "display_name", "subscription_bypass", "bypass_note", "bypass_granted_at"]
+        read_only_fields = ["id", "email", "display_name", "bypass_granted_at"]
 
 
 def build_token_response_for_user(user: User) -> dict:
