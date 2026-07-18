@@ -399,6 +399,128 @@ async def test_timer_task_dict_survives_cancellation_races(monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
+async def test_timer_resumes_on_reconnect_after_restart(monkeypatch):
+    """The gap this closes: _reconcile_timeout alone only reveals an *already
+    passed* deadline on reconnect -- a still-open round with a *future* deadline
+    was never rescheduled. A service restart destroys `_timer_tasks` (module-level,
+    in-process) but not the persisted `vote_deadline`; if clients reconnect
+    *before* that deadline (the realistic case -- the SPA reconnects immediately),
+    nothing was left to ever fire the reveal. The round stayed OPEN forever until
+    some later reconnect happened to land after the deadline.
+
+    Simulate the restart precisely: cancel the scheduled task the way process
+    death would (not just forget it in the dict -- an orphaned-but-still-running
+    task would race the newly-resumed one and mask a missing reschedule), then
+    clear `_timer_tasks`. The deadline in DB is left untouched by that, exactly
+    as a real restart would leave it. To keep the test fast without waiting out
+    the real timer.seconds, the deadline is then pulled to a near-future instant
+    via a direct DB write (the same trick `_expire()` above uses for the past
+    case, just with a positive delta) -- only the final "does it actually fire"
+    step below waits any real (sub-second) time."""
+    monkeypatch.setattr(services, "TIMER_MIN_SECONDS", 0)
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    await fac.send_json_to({"v": 1, "type": "timer.set", "payload": {"enabled": True, "seconds": 30}})
+    await _drain_until(voter, "timer.changed")
+    await fac.send_json_to({"v": 1, "type": "subject.set", "payload": {"text": "Budget?"}})
+    await _drain_until(voter, "subject.updated")
+    await fac.send_json_to({"v": 1, "type": "vote.open", "payload": {}})
+    await _drain_until(voter, "vote.opened")
+    await _settle()
+    task_a = consumers._timer_tasks.get(code)
+    assert task_a is not None and not task_a.done()
+
+    # Simulate the service restart: kill the scheduled task the way process death
+    # would, and wipe the module-level bookkeeping dict.
+    task_a.cancel()
+    consumers._timer_tasks.clear()
+    await _settle()
+    assert task_a.done()
+
+    def _pull_deadline_near():
+        room = Room.objects.get(code=code)
+        session = room.current_session
+        session.vote_deadline = timezone.now() + timezone.timedelta(milliseconds=400)
+        session.save(update_fields=["vote_deadline"])
+
+    await database_sync_to_async(_pull_deadline_near)()
+
+    # Reconnect: _reconcile_timeout must NOT reveal yet (deadline is still
+    # future) but the new resume-on-reconnect logic must pick tracking back up.
+    await voter.disconnect()
+    voter2, sync2 = await _join(voter_token, code)
+    # _handle_join's tail (reconcile + resume) keeps running on the background
+    # application task after _join() returns with only the first message
+    # (state.sync); both involve real database_sync_to_async thread-pool calls,
+    # so a real sleep -- not a bare _settle() tick -- is needed to let it land
+    # before we inspect module state.
+    await asyncio.sleep(0.1)
+    assert sync2["payload"]["roundState"] == "open"  # confirms it wasn't already revealed
+    task_b = consumers._timer_tasks.get(code)
+    assert task_b is not None and not task_b.done(), (
+        "reconnect with a still-open round and a future deadline must resume a "
+        "timer task -- _reconcile_timeout alone never reschedules"
+    )
+
+    revealed = await _drain_until(voter2, "vote.revealed", limit=10)
+    assert revealed["payload"]["reason"] == "timeout"
+    # Receiving the broadcast only proves _fire_timeout reached the `await
+    # self._broadcast(...)` line, not that it has finished (the `finally` pop is
+    # still one scheduling step away). Await the task itself so it is
+    # deterministically done before the test's event loop is torn down --
+    # otherwise this is a rare source of a "Task was destroyed but it is
+    # pending" warning at suite teardown, timing-dependent under load.
+    await asyncio.wait_for(task_b, timeout=1)
+    assert task_b.done()
+    assert code not in consumers._timer_tasks
+
+    await fac.disconnect()
+    await voter2.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_reconnect_does_not_duplicate_tracked_timer_task():
+    """A reconnect must not touch a timer task that's already tracked: it should
+    neither cancel it nor schedule a second one. Without the `code not in
+    _timer_tasks` guard in `_resume_timeout`, four clients reconnecting in a
+    burst would each cancel-and-recreate the task, discarding the delay computed
+    at the original schedule and risking a cancel racing a legitimate fire."""
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    await fac.send_json_to({"v": 1, "type": "timer.set", "payload": {"enabled": True, "seconds": 30}})
+    await _drain_until(voter, "timer.changed")
+    await fac.send_json_to({"v": 1, "type": "subject.set", "payload": {"text": "Budget?"}})
+    await _drain_until(voter, "subject.updated")
+    await fac.send_json_to({"v": 1, "type": "vote.open", "payload": {}})
+    await _drain_until(voter, "vote.opened")
+    await _settle()
+    task_a = consumers._timer_tasks.get(code)
+    assert task_a is not None and not task_a.done()
+
+    await voter.disconnect()
+    voter2, _ = await _join(voter_token, code)
+    # Same reasoning as above: real sleep, not _settle(), to let the join tail's
+    # thread-pool DB calls actually complete before inspecting _timer_tasks.
+    await asyncio.sleep(0.1)
+
+    assert consumers._timer_tasks.get(code) is task_a, (
+        "reconnect must not replace an already-tracked timer task"
+    )
+    assert not task_a.done()
+
+    task_a.cancel()
+    await _settle()
+    await fac.disconnect()
+    await voter2.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
 async def test_unknown_token_rejected():
     code, _, _ = await database_sync_to_async(_make_room)()
     comm = WebsocketCommunicator(URLRouter(websocket_urlpatterns), f"/ws/rooms/{code}/")

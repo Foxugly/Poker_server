@@ -142,6 +142,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         })
         await self._broadcast_presence(participant.room)
         await self._reconcile_timeout(self.code)
+        await self._resume_timeout(self.code)
 
     async def _handle_claim(self, participant, cid):
         allowed = await database_sync_to_async(services.can_claim)(participant.room)
@@ -228,3 +229,26 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             return
         revealed = await database_sync_to_async(services.revealed_payload)(room)
         await self._broadcast("vote.revealed", {**revealed, "reason": "timeout"})
+
+    async def _resume_timeout(self, code):
+        """Reprogramme une tache de revelation a la reconnexion si le round est
+        encore OPEN avec une echeance future et qu'aucune tache n'est deja suivie
+        pour cette room.
+
+        _reconcile_timeout() (appele juste avant) ne couvre que l'echeance deja
+        depassee ; sans ce complement, une echeance encore future perdait toute
+        tache a la reconnexion et le round restait bloque en OPEN jusqu'a une
+        reconnexion ULTERIEURE a l'echeance -- le cas courant, puisque le SPA se
+        reconnecte immediatement apres une coupure.
+        """
+        room = await database_sync_to_async(services.room_by_code)(code)
+        if room is None:
+            return
+        deadline = await database_sync_to_async(services.open_deadline)(room)
+        if deadline is None:
+            return
+        # Verification et ecriture atomiques (aucun await entre les deux) : sinon
+        # plusieurs clients qui se reconnectent en rafale annuleraient et
+        # recreeraient la tache plusieurs fois chacun.
+        if code not in _timer_tasks:
+            self._schedule_timeout(code, deadline)

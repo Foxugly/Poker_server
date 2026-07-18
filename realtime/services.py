@@ -301,16 +301,25 @@ def reset_round(room, participant):
     return "idle"
 
 
-def deadline_iso(room):
-    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS.
+def open_deadline(room):
+    """Echeance (datetime) du round OPEN courant, ou None.
 
     Ne renvoie une valeur que pour un round OPEN : meme si une echeance perimee
     traine en base (bug de reinitialisation, etc.), aucun round IDLE/REVEALED/ACTED
-    ne peut la divulguer (defense en profondeur)."""
+    ne peut la divulguer (defense en profondeur). Sert de base a deadline_iso() et,
+    cote consumer, a decider s'il faut reprogrammer une tache de revelation a la
+    reconnexion (une tache en memoire ne survit pas a un redemarrage du service,
+    l'echeance en base si)."""
     session = _current_session(room)
     if session is None or session.state != RoundState.OPEN or session.vote_deadline is None:
         return None
-    return session.vote_deadline.isoformat()
+    return session.vote_deadline
+
+
+def deadline_iso(room):
+    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS."""
+    deadline = open_deadline(room)
+    return deadline.isoformat() if deadline is not None else None
 
 
 def participation(room):
