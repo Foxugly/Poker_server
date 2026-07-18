@@ -66,6 +66,7 @@ def test_revoking_bypass_keeps_granted_at(staff, member):
     _client(staff).patch(f"/api/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json")
     member.refresh_from_db()
     granted = member.bypass_granted_at
+    assert granted is not None
     _client(staff).patch(f"/api/staff/users/{member.pk}/", {"subscription_bypass": False}, format="json")
     member.refresh_from_db()
     assert member.subscription_bypass is False and member.bypass_granted_at == granted
