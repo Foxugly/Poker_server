@@ -20,6 +20,11 @@ from rooms.models import (
 )
 
 
+TIMER_MIN_SECONDS = 10
+TIMER_MAX_SECONDS = 60
+TIMER_STEP_SECONDS = 5
+
+
 class RoomError(Exception):
     def __init__(self, code, message="", rejected_type=None):
         super().__init__(message or code)
@@ -147,6 +152,24 @@ def select_subject(room, participant, subject_id):
     return subject.text
 
 
+def set_timer(room, participant, enabled, seconds):
+    """Reglage du timer par le facilitateur. La duree est normalisee cote serveur
+    (arrondi au multiple de 5 le plus proche, puis bornage 10-60) : un client
+    modifie ne peut imposer ni 0 s, ni une valeur absurde, ni un pas hors grille."""
+    _require_facilitator(room, participant, "timer.set")
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        seconds = room.timer_seconds
+    seconds = round(seconds / TIMER_STEP_SECONDS) * TIMER_STEP_SECONDS
+    seconds = max(TIMER_MIN_SECONDS, min(TIMER_MAX_SECONDS, seconds))
+    room.timer_enabled = bool(enabled)
+    room.timer_seconds = seconds
+    room.save(update_fields=["timer_enabled", "timer_seconds"])
+    room.touch()
+    return {"enabled": room.timer_enabled, "seconds": room.timer_seconds}
+
+
 def open_vote(room, participant):
     _require_facilitator(room, participant, "vote.open")
     session = _current_session(room)
@@ -156,14 +179,22 @@ def open_vote(room, participant):
         raise RoomError("state.invalid_transition", "Not idle", "vote.open")
     session.state = RoundState.OPEN
     session.opened_at = timezone.now()
-    session.save(update_fields=["state", "opened_at"])
+    session.vote_deadline = (
+        session.opened_at + timezone.timedelta(seconds=room.timer_seconds)
+        if room.timer_enabled
+        else None
+    )
+    session.save(update_fields=["state", "opened_at", "vote_deadline"])
     room.touch()
+    return session.vote_deadline
 
 
 def cast_vote(room, participant, card_value):
     session = _current_session(room)
     if session is None or session.state != RoundState.OPEN:
         raise RoomError("state.invalid_transition", "Voting is not open", "vote.cast")
+    if session.vote_deadline is not None and timezone.now() > session.vote_deadline:
+        raise RoomError("state.invalid_transition", "Voting time is over", "vote.cast")
     if card_value not in _card_values(room):
         raise RoomError("state.invalid_transition", "Unknown card value", "vote.cast")
     Vote.objects.update_or_create(
@@ -211,9 +242,18 @@ def reset_round(room, participant):
     session.state = RoundState.IDLE
     session.opened_at = None
     session.revealed_at = None
-    session.save(update_fields=["state", "opened_at", "revealed_at"])
+    session.vote_deadline = None
+    session.save(update_fields=["state", "opened_at", "revealed_at", "vote_deadline"])
     room.touch()
     return "idle"
+
+
+def deadline_iso(room):
+    """Echeance du round courant au format ISO, ou None. Sert aux payloads WS."""
+    session = _current_session(room)
+    if session is None or session.vote_deadline is None:
+        return None
+    return session.vote_deadline.isoformat()
 
 
 def participation(room):

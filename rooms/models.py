@@ -36,6 +36,11 @@ class Room(models.Model):
     team = models.ForeignKey("teams.Team", on_delete=models.CASCADE, null=True, blank=True, related_name="rooms")
     # Hard cap on participants per room (product limit).
     max_participants = models.PositiveSmallIntegerField(default=20)
+    # Timer de round (optionnel) : le facilitateur l'active et regle sa duree.
+    # Porte par la room et non par le round, pour persister d'un round a l'autre.
+    # Duree bornee 10-60 s par pas de 5, normalisee cote serveur (services.set_timer).
+    timer_enabled = models.BooleanField(default=False)
+    timer_seconds = models.PositiveSmallIntegerField(default=10)
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
     expires_at = models.DateTimeField(db_index=True)
@@ -103,6 +108,9 @@ class VoteSession(models.Model):
     )
     opened_at = models.DateTimeField(null=True, blank=True)
     revealed_at = models.DateTimeField(null=True, blank=True)
+    # Echeance du vote, posee a l'ouverture quand le timer est actif. Le serveur
+    # fait autorite : le decompte affiche par le client est cosmetique.
+    vote_deadline = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
