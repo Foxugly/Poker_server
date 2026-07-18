@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import User
+from .models import BypassGrantLog, User
 
 
 @admin.register(User)
@@ -23,3 +23,22 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {"classes": ("wide",), "fields": ("email", "password1", "password2")}),
     )
+
+
+@admin.register(BypassGrantLog)
+class BypassGrantLogAdmin(admin.ModelAdmin):
+    """Journal append-only : consultable, jamais modifiable depuis l'admin."""
+
+    list_display = ("created_at", "target", "granted", "actor_label", "note")
+    list_filter = ("granted", "created_at")
+    search_fields = ("actor_label", "target__email", "note")
+    readonly_fields = ("actor", "actor_label", "target", "granted", "note", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

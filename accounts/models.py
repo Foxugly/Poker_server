@@ -91,3 +91,34 @@ class MagicLinkToken(models.Model):
     def consume(self):
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+
+class BypassGrantLog(models.Model):
+    """Journal append-only des octrois/revocations d'acces offert (spec lot A-bis).
+
+    Le User porte l'ETAT courant (subscription_bypass / bypass_note / bypass_granted_at) ;
+    ce modele porte l'HISTOIRE, y compris l'acteur, que l'etat courant ne dit pas.
+    Jamais modifie ni supprime : une revocation ajoute une ligne, elle n'en efface aucune.
+    """
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_made",
+    )
+    # Snapshot de l'email : la trace survit a la suppression du compte staff.
+    actor_label = models.CharField(max_length=254, blank=True)
+    target = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="bypass_grants_received"
+    )
+    granted = models.BooleanField()  # True = octroi, False = revocation
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        verb = "grant" if self.granted else "revoke"
+        return f"{verb} #{self.target_id} by {self.actor_label}"

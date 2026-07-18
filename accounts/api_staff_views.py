@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .api_serializers import StaffUserSerializer
-from .models import User
+from .models import BypassGrantLog, User
 
 SEARCH_LIMIT = 50
 
@@ -46,4 +46,13 @@ class StaffUserDetailView(APIView):
         if user.subscription_bypass and not was_granted:
             user.bypass_granted_at = timezone.now()
             user.save(update_fields=["bypass_granted_at"])
+        # Journal append-only : l'etat courant ne dit pas QUI a bascule le flag.
+        if user.subscription_bypass != was_granted:
+            BypassGrantLog.objects.create(
+                actor=request.user,
+                actor_label=request.user.email,
+                target=user,
+                granted=user.subscription_bypass,
+                note=user.bypass_note,
+            )
         return Response(StaffUserSerializer(user).data)
