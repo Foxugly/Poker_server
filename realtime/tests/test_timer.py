@@ -134,3 +134,53 @@ def test_deadline_iso_hides_stale_deadline_outside_open_round(room_with_facilita
     session.save(update_fields=["vote_deadline"])
 
     assert services.deadline_iso(room) is None
+
+
+@pytest.mark.django_db
+def test_reveal_on_timeout_reveals_when_deadline_passed(room_with_facilitator):
+    room, facilitator, voter = room_with_facilitator
+    services.set_timer(room, facilitator, True, 30)
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    services.cast_vote(room, voter, "4")
+    session = services._current_session(room)
+    session.vote_deadline = timezone.now() - timezone.timedelta(seconds=1)
+    session.save(update_fields=["vote_deadline"])
+
+    assert services.reveal_on_timeout(room) is True
+    assert services._current_session(room).state == RoundState.REVEALED
+
+
+@pytest.mark.django_db
+def test_reveal_on_timeout_is_a_noop_before_deadline(room_with_facilitator):
+    room, facilitator, _ = room_with_facilitator
+    services.set_timer(room, facilitator, True, 30)
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+
+    assert services.reveal_on_timeout(room) is False
+    assert services._current_session(room).state == RoundState.OPEN
+
+
+@pytest.mark.django_db
+def test_reveal_on_timeout_works_with_zero_votes(room_with_facilitator):
+    """Une expiration est deliberee : elle revele meme sans aucun vote, contrairement
+    a une revelation manuelle qui exige au moins un vote."""
+    room, facilitator, _ = room_with_facilitator
+    services.set_timer(room, facilitator, True, 30)
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    session = services._current_session(room)
+    session.vote_deadline = timezone.now() - timezone.timedelta(seconds=1)
+    session.save(update_fields=["vote_deadline"])
+
+    assert services.reveal_on_timeout(room) is True
+    assert services.revealed_payload(room)["votes"] == []
+
+
+@pytest.mark.django_db
+def test_reveal_on_timeout_is_a_noop_without_timer(room_with_facilitator):
+    room, facilitator, _ = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    assert services.reveal_on_timeout(room) is False

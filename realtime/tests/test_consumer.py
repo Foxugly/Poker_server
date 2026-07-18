@@ -201,6 +201,44 @@ async def test_facilitator_voluntary_transfer():
 
 
 @pytest.mark.django_db(transaction=True)
+async def test_timeout_reveals_on_reconnect_reconciliation():
+    """The scheduled asyncio task is best-effort; the deadline in DB is authoritative.
+    Simulate a lost/expired task (e.g. service restart) by backdating vote_deadline
+    directly, then verify a reconnect triggers _reconcile_timeout and reveals."""
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    fac, _ = await _join(fac_token, code)
+    voter, _ = await _join(voter_token, code)
+    await _drain_until(fac, "participant.joined")
+
+    await fac.send_json_to({"v": 1, "type": "timer.set", "payload": {"enabled": True, "seconds": 30}})
+    await _drain_until(voter, "timer.changed")
+    await fac.send_json_to({"v": 1, "type": "subject.set", "payload": {"text": "Budget?"}})
+    await _drain_until(voter, "subject.updated")
+    await fac.send_json_to({"v": 1, "type": "vote.open", "payload": {}})
+    opened = await _drain_until(voter, "vote.opened")
+    assert opened["payload"]["deadline"] is not None
+
+    def _expire():
+        room = Room.objects.get(code=code)
+        session = room.current_session
+        session.vote_deadline = timezone.now() - timezone.timedelta(seconds=1)
+        session.save(update_fields=["vote_deadline"])
+
+    await database_sync_to_async(_expire)()
+
+    # Disconnect + reconnect: the module-level timer task (if any) is orphaned on
+    # the old consumer instance's room key, but reconciliation on join catches up.
+    await voter.disconnect()
+    voter2, sync2 = await _join(voter_token, code)
+    revealed = await _drain_until(voter2, "vote.revealed")
+    assert revealed["payload"]["reason"] == "timeout"
+    assert sync2["payload"]["roundState"] == "open"  # state.sync was built before reconciliation ran
+
+    await fac.disconnect()
+    await voter2.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
 async def test_unknown_token_rejected():
     code, _, _ = await database_sync_to_async(_make_room)()
     comm = WebsocketCommunicator(URLRouter(websocket_urlpatterns), f"/ws/rooms/{code}/")

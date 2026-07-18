@@ -4,13 +4,21 @@ Server is the source of truth: clients emit intentions, the server validates aga
 the state machine and *rebroadcasts the fact*. Vote values stay secret until reveal.
 Control intentions are accepted only from the facilitator (authority, contract §0.2).
 """
+import asyncio
+
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.utils import timezone
 
 from . import services
 from .services import RoomError
 
 PROTOCOL_VERSION = 1
+
+# Taches de revelation a echeance, par code de room. Au niveau du module et non
+# sur l'instance du consumer : la tache doit survivre a la deconnexion du client
+# qui a ouvert le vote.
+_timer_tasks = {}
 
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
@@ -72,24 +80,31 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self._broadcast("subject.updated", {"text": text})
             await self._broadcast_agenda(room)
         elif mtype == "vote.open":
-            await database_sync_to_async(services.open_vote)(room, participant)
-            await self._broadcast("vote.opened", {})
+            deadline = await database_sync_to_async(services.open_vote)(room, participant)
+            await self._broadcast("vote.opened", {"deadline": deadline.isoformat() if deadline else None})
             await self._broadcast_participation(room)
+            self._schedule_timeout(room.code, deadline)
         elif mtype == "vote.cast":
             await database_sync_to_async(services.cast_vote)(room, participant, payload.get("cardValue"))
             await self._broadcast_participation(room)
         elif mtype == "vote.reveal":
             await database_sync_to_async(services.reveal)(room, participant)
             revealed = await database_sync_to_async(services.revealed_payload)(room)
-            await self._broadcast("vote.revealed", revealed)
+            await self._broadcast("vote.revealed", {**revealed, "reason": "facilitator"})
         elif mtype == "result.act":
             chosen = await database_sync_to_async(services.act_result)(room, participant, payload.get("chosenValue"))
             await self._broadcast("result.acted", {"chosenValue": chosen})
             await self._broadcast_agenda(room)
         elif mtype == "vote.reset":
             next_state = await database_sync_to_async(services.reset_round)(room, participant)
+            self._cancel_timeout(room.code)
             await self._broadcast("vote.wasReset", {"nextState": next_state})
             await self._broadcast_participation(room)
+        elif mtype == "timer.set":
+            settings_ = await database_sync_to_async(services.set_timer)(
+                room, participant, payload.get("enabled"), payload.get("seconds")
+            )
+            await self._broadcast("timer.changed", settings_)
         elif mtype == "facilitator.transfer":
             new_id = await database_sync_to_async(services.transfer_facilitator)(
                 room, participant, payload.get("targetParticipantId")
@@ -120,6 +135,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             "role": participant.role,
         })
         await self._broadcast_presence(participant.room)
+        await self._reconcile_timeout(self.code)
 
     async def _handle_claim(self, participant, cid):
         allowed = await database_sync_to_async(services.can_claim)(participant.room)
@@ -168,3 +184,38 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def poker_event(self, event):
         await self._emit(event["mtype"], event["payload"])
+
+    def _schedule_timeout(self, code, deadline):
+        """Programme la revelation a echeance. Best-effort : la base fait foi via
+        la reconciliation paresseuse de _reconcile_timeout()."""
+        self._cancel_timeout(code)
+        if deadline is None:
+            return
+        delay = max(0.0, (deadline - timezone.now()).total_seconds())
+        _timer_tasks[code] = asyncio.create_task(self._fire_timeout(code, delay))
+
+    def _cancel_timeout(self, code):
+        task = _timer_tasks.pop(code, None)
+        if task is not None:
+            task.cancel()
+
+    async def _fire_timeout(self, code, delay):
+        try:
+            await asyncio.sleep(delay)
+            await self._reconcile_timeout(code)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _timer_tasks.pop(code, None)
+
+    async def _reconcile_timeout(self, code):
+        """Revele si l'echeance est passee. Appelee par la tache programmee ET a la
+        reconnexion : un redemarrage du service perd la tache, pas l'echeance."""
+        room = await database_sync_to_async(services.room_by_code)(code)
+        if room is None:
+            return
+        fired = await database_sync_to_async(services.reveal_on_timeout)(room)
+        if not fired:
+            return
+        revealed = await database_sync_to_async(services.revealed_payload)(room)
+        await self._broadcast("vote.revealed", {**revealed, "reason": "timeout"})

@@ -51,6 +51,15 @@ def resolve_participant(code, token):
     return participant
 
 
+def room_by_code(code):
+    """code → room, or None if unknown/expired. Used by the consumer's timeout
+    reconciliation, which has no participant/token in hand (background task)."""
+    room = Room.objects.filter(code=code).first()
+    if room is None or not room.is_live:
+        return None
+    return room
+
+
 def set_connected(participant, connected):
     participant.is_connected = connected
     participant.last_seen_at = timezone.now()
@@ -215,6 +224,28 @@ def reveal(room, participant):
     session.revealed_at = timezone.now()
     session.save(update_fields=["state", "revealed_at"])
     room.touch()
+
+
+def reveal_on_timeout(room):
+    """Revele si l'echeance est depassee et que le round est encore ouvert.
+    Renvoie True si une revelation a bien eu lieu, False sinon.
+
+    Volontairement sans controle de facilitateur (c'est le serveur qui agit) et
+    sans le garde "No votes yet" de reveal() : une expiration est deliberee,
+    alors que ce garde protege d'une revelation manuelle prematuree.
+    Idempotent : rappelable sans risque, ce dont depend la reconciliation
+    paresseuse apres un redemarrage du service.
+    """
+    session = _current_session(room)
+    if session is None or session.state != RoundState.OPEN:
+        return False
+    if session.vote_deadline is None or timezone.now() < session.vote_deadline:
+        return False
+    session.state = RoundState.REVEALED
+    session.revealed_at = timezone.now()
+    session.save(update_fields=["state", "revealed_at"])
+    room.touch()
+    return True
 
 
 def act_result(room, participant, chosen_value):
@@ -385,6 +416,8 @@ def build_state_sync(participant):
         "result": result,
         "facilitatorPresent": facilitator_present(room),
         "agenda": build_agenda(room),
+        "deadline": deadline_iso(room),
+        "timer": {"enabled": room.timer_enabled, "seconds": room.timer_seconds},
     }
     # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e).
     if round_state == RoundState.REVEALED:
