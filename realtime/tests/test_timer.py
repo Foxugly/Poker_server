@@ -1,4 +1,6 @@
 """Timer de round : reglage facilitateur, echeance posee a l'ouverture, votes tardifs refuses."""
+import json
+
 import pytest
 from django.utils import timezone
 
@@ -175,7 +177,7 @@ def test_reveal_on_timeout_works_with_zero_votes(room_with_facilitator):
     session.save(update_fields=["vote_deadline"])
 
     assert services.reveal_on_timeout(room) is True
-    assert services.revealed_payload(room)["votes"] == []
+    assert services.revealed_payload(room)["tally"] == []
 
 
 @pytest.mark.django_db
@@ -184,3 +186,62 @@ def test_reveal_on_timeout_is_a_noop_without_timer(room_with_facilitator):
     services.set_subject(room, facilitator, "Recrutement")
     services.open_vote(room, facilitator)
     assert services.reveal_on_timeout(room) is False
+
+
+@pytest.mark.django_db
+def test_revealed_payload_is_anonymous(room_with_facilitator):
+    """La charge utile ne doit contenir aucun lien participant -> carte."""
+    room, facilitator, voter = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    services.cast_vote(room, facilitator, "4")
+    services.cast_vote(room, voter, "4")
+    services.reveal(room, facilitator)
+
+    payload = services.revealed_payload(room)
+    assert "votes" not in payload
+    serialized = json.dumps(payload)
+    assert str(voter.public_id) not in serialized
+    assert str(facilitator.public_id) not in serialized
+
+
+@pytest.mark.django_db
+def test_revealed_payload_counts_votes_per_value(room_with_facilitator):
+    room, facilitator, voter = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    services.cast_vote(room, facilitator, "4")
+    services.cast_vote(room, voter, "4")
+    services.reveal(room, facilitator)
+
+    assert services.revealed_payload(room)["tally"] == [{"cardValue": "4", "count": 2}]
+
+
+@pytest.mark.django_db
+def test_revealed_payload_omits_values_without_votes(room_with_facilitator):
+    """Seules les valeurs ayant au moins une voix apparaissent."""
+    room, facilitator, voter = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    services.cast_vote(room, facilitator, "1")
+    services.cast_vote(room, voter, "7")
+    services.reveal(room, facilitator)
+
+    tally = services.revealed_payload(room)["tally"]
+    assert [entry["cardValue"] for entry in tally] == ["1", "7"]
+    assert all(entry["count"] >= 1 for entry in tally)
+
+
+@pytest.mark.django_db
+def test_revealed_payload_empty_when_no_votes(room_with_facilitator):
+    room, facilitator, _ = room_with_facilitator
+    services.set_timer(room, facilitator, True, 10)
+    services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    session = services._current_session(room)
+    session.vote_deadline = timezone.now() - timezone.timedelta(seconds=1)
+    session.save(update_fields=["vote_deadline"])
+    services.reveal_on_timeout(room)
+
+    payload = services.revealed_payload(room)
+    assert payload["tally"] == [] and payload["spread"]["min"] is None

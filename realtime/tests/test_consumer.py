@@ -99,10 +99,12 @@ async def test_full_vote_cycle_and_secret_of_votes():
     assert set(part["payload"].keys()) == {"voted", "total", "votedIds"}
     assert part["payload"]["total"] == 2
 
-    # facilitator reveals → values now visible
+    # facilitator reveals → anonymous per-value tally now visible (never a
+    # participant -> card link, contract §6.a as amended by the anonymous-reveal task)
     await fac.send_json_to({"v": 1, "type": "vote.reveal", "payload": {}})
     revealed = await _drain_until(voter, "vote.revealed")
-    assert revealed["payload"]["votes"][0]["cardValue"] == "5"
+    assert "votes" not in revealed["payload"]
+    assert revealed["payload"]["tally"] == [{"cardValue": "5", "count": 1}]
     assert revealed["payload"]["spread"] == {"min": 5, "max": 5}
 
     await fac.send_json_to({"v": 1, "type": "result.act", "payload": {"chosenValue": "5"}})

@@ -5,6 +5,8 @@ wraps these with ``database_sync_to_async``. Server is the source of truth: ever
 mutation validates the state machine and raises ``RoomError`` on an illegal move
 (contract §0.1, §6.b) rather than applying it.
 """
+from collections import Counter
+
 from django.conf import settings
 from django.utils import timezone
 
@@ -34,7 +36,11 @@ class RoomError(Exception):
 
 
 def _card_values(room):
-    return {card["value"] for card in room.deck_snapshot.get("cards", [])}
+    """Deck values, in deck order (``deck_snapshot["cards"]`` is built already sorted
+    by ``Card.order`` — see ``rooms.snapshot.build_deck_snapshot``). Returned as a
+    list, not a set: callers that display a per-value tally (``revealed_payload``)
+    depend on this order being stable across reveals."""
+    return [card["value"] for card in room.deck_snapshot.get("cards", [])]
 
 
 def resolve_participant(code, token):
@@ -319,15 +325,25 @@ def participation(room):
 
 
 def revealed_payload(room):
-    """Vote values — ONLY ever called in REVEALED state (secret-of-votes, contract §6.a)."""
+    """Decompte anonyme des votes — ONLY ever called in REVEALED state
+    (secret-of-votes, contract §6.a).
+
+    Ne renvoie AUCUN lien participant -> carte : l'anonymat s'obtient en n'emettant
+    pas la donnee, pas en la masquant cote client (une trame WS est lisible dans les
+    outils de developpement du navigateur). Seules les valeurs ayant au moins une
+    voix figurent dans le decompte, dans l'ordre du deck.
+    """
     session = _current_session(room)
-    votes = list(
-        Vote.objects.filter(session=session).select_related("participant")
-    )
-    items = [{"participantId": str(v.participant.public_id), "cardValue": v.card_value} for v in votes]
+    votes = list(Vote.objects.filter(session=session))
+    counts = Counter(v.card_value for v in votes)
+    tally = [
+        {"cardValue": value, "count": counts[value]}
+        for value in _card_values(room)
+        if counts.get(value)
+    ]
     numeric = [int(v.card_value) for v in votes if v.card_value.isdigit()]
     spread = {"min": min(numeric), "max": max(numeric)} if numeric else {"min": None, "max": None}
-    return {"votes": items, "spread": spread}
+    return {"tally": tally, "spread": spread}
 
 
 def participants_list(room):
@@ -434,7 +450,9 @@ def build_state_sync(participant):
         "deadline": deadline_iso(room),
         "timer": {"enabled": room.timer_enabled, "seconds": room.timer_seconds},
     }
-    # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e).
+    # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e) — the
+    # anonymous tally only, same as everyone else post-reveal (no participant->card
+    # link, ever).
     if round_state == RoundState.REVEALED:
-        payload["votes"] = revealed_payload(room)["votes"]
+        payload["tally"] = revealed_payload(room)["tally"]
     return payload
