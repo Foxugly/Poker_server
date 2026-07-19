@@ -18,6 +18,20 @@ LEVELS = [
 LANG_ORDER = ("en", "fr", "nl", "it", "es")
 
 
+def create_standard_card_back():
+    """The standard back, catalogued separately so a team can pair any back with
+    any deck. Seeded on its own: an install predating CardBack already has the
+    deck, so seeding only inside create_standard_deck() would never reach it."""
+    back, created = CardBack.objects.get_or_create(
+        is_standard=True, team=None, defaults={"image": "decks/backs/back.webp"}
+    )
+    if created:
+        back.set_current_language("en")
+        back.name = "Standard"
+        back.save()
+    return back, created
+
+
 def create_standard_deck():
     vt, _ = VoteType.objects.get_or_create(
         code="delegation_poker", defaults={"resolution_strategy": "delegation_v1"}
@@ -33,15 +47,7 @@ def create_standard_deck():
     deck.name = "Delegation Poker"
     deck.save()
 
-    # The standard back, catalogued separately so a team can pair any back with
-    # any deck. Mirrors the deck's own default image.
-    back, created = CardBack.objects.get_or_create(
-        is_standard=True, team=None, defaults={"image": "decks/backs/back.webp"}
-    )
-    if created:
-        back.set_current_language("en")
-        back.name = "Standard"
-        back.save()
+    create_standard_card_back()
 
     for value, slug, *names in LEVELS:
         card = Card.objects.create(
