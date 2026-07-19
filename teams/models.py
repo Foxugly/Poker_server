@@ -8,6 +8,15 @@ from django.db import models
 from django.utils import timezone
 
 
+class SurfaceStyle(models.TextChoices):
+    """How a surface is skinned. Without this discriminator a team carrying both a
+    colour and an image left it undefined which one applied — they were in fact
+    both sent to the room."""
+
+    COLOR = "color", "Flat colour"
+    IMAGE = "image", "Image from the catalogue"
+
+
 class TeamRole(models.TextChoices):
     """Team-scoped roles. Deliberately NOT "facilitator": that word is taken by
     ``rooms.Role.FACILITATOR``, who runs the current round — a per-session role any
@@ -29,13 +38,16 @@ class Team(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     # Appearance customization (P2.6): the team's room theme. Defaults mirror the
     # standard emerald felt + dark card-back base used by anonymous rooms.
+    card_back_style = models.CharField(max_length=8, choices=SurfaceStyle.choices, default=SurfaceStyle.COLOR)
     card_back_color = models.CharField(max_length=9, default="#143d2f")
+    felt_style = models.CharField(max_length=8, choices=SurfaceStyle.choices, default=SurfaceStyle.COLOR)
     felt_color = models.CharField(max_length=9, default="#10b981")
     # The poker types this team plays. A room freezes all of them and the
     # facilitator switches between them round by round. Empty = the standard deck.
     decks = models.ManyToManyField("decks.Deck", blank=True, related_name="teams_enabled")
     # The card back, picked independently of the fronts. Null = the deck's own default.
     card_back = models.ForeignKey("decks.CardBack", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    felt = models.ForeignKey("decks.Felt", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     # Billing (P2.7) is account-level: a team is "paid" via its owner's
     # billing.Subscription (plan quota), not a per-team subscription.
 

@@ -4,7 +4,7 @@ rooms are dealt from. Rooms never read these serializers — they freeze an immu
 """
 from rest_framework import serializers
 
-from .models import Card, CardBack, Deck
+from .models import Card, CardBack, Deck, Felt
 
 
 def _media_url(image) -> str:
@@ -79,3 +79,18 @@ class CardBackSerializer(serializers.ModelSerializer):
 
     def get_is_custom(self, back) -> bool:
         return back.team_id is not None
+
+
+class FeltSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    is_custom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Felt
+        fields = ["id", "name", "is_standard", "is_custom", "image"]
+
+    def get_image(self, felt) -> str:
+        return _media_url(felt.image)
+
+    def get_is_custom(self, felt) -> bool:
+        return felt.team_id is not None

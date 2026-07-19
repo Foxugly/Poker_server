@@ -32,7 +32,8 @@ def _layer_text(layer):
 
 def build_deck_snapshot(deck: Deck, card_back=None) -> dict:
     """``card_back`` overrides the deck's own back image (a team picks the two
-    independently); None keeps the deck's default."""
+    independently); None keeps the deck's default. A team's chosen styles are
+    applied afterwards by ``apply_team_appearance``."""
     vote_type = deck.vote_type
     cards = []
     for card in deck.cards.filter(is_active=True).prefetch_related("layers__translations").order_by("order"):
@@ -65,8 +66,15 @@ def build_deck_snapshot(deck: Deck, card_back=None) -> dict:
         "voteType": vote_type.code,
         "resolutionStrategy": vote_type.resolution_strategy,
         "deckId": deck.pk,
-        "cardBack": {"image": _media_url(card_back.image if card_back is not None else deck.card_back_image)},
-        # Room theme (P2.6): default appearance; team rooms override from the team.
+        # Each surface carries its style so the client never has to guess whether a
+        # colour or an image wins. Anonymous rooms: the deck's own back, flat felt.
+        "cardBack": {
+            "style": "image",
+            "image": _media_url(card_back.image if card_back is not None else deck.card_back_image),
+            "color": DEFAULT_CARD_BACK_COLOR,
+        },
+        "felt": {"style": "color", "image": None, "color": DEFAULT_FELT_COLOR},
+        # Kept for older clients reading theme.* — remove once none are left.
         "theme": {"cardBackColor": DEFAULT_CARD_BACK_COLOR, "feltColor": DEFAULT_FELT_COLOR},
         "cards": cards,
     }
@@ -75,3 +83,28 @@ def build_deck_snapshot(deck: Deck, card_back=None) -> dict:
 # Defaults mirror the frontend's built-in room look (dark card-back base, emerald felt).
 DEFAULT_CARD_BACK_COLOR = "#143d2f"
 DEFAULT_FELT_COLOR = "#10b981"
+
+
+def apply_team_appearance(snapshot: dict, team, card_back=None, felt=None) -> dict:
+    """Stamp a team's appearance onto a room snapshot, honouring its styles.
+
+    The style decides which of the two representations the client renders; the
+    other is still carried so switching back needs no new snapshot.
+    """
+    from teams.models import SurfaceStyle
+
+    back_is_image = team.card_back_style == SurfaceStyle.IMAGE
+    snapshot["cardBack"] = {
+        "style": "image" if back_is_image else "color",
+        "image": _media_url(card_back.image) if (back_is_image and card_back is not None)
+        else snapshot.get("cardBack", {}).get("image"),
+        "color": team.card_back_color,
+    }
+    felt_is_image = team.felt_style == SurfaceStyle.IMAGE and felt is not None
+    snapshot["felt"] = {
+        "style": "image" if felt_is_image else "color",
+        "image": _media_url(felt.image) if felt_is_image else None,
+        "color": team.felt_color,
+    }
+    snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
+    return snapshot
