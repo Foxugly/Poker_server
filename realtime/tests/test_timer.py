@@ -189,10 +189,30 @@ def test_reveal_on_timeout_is_a_noop_without_timer(room_with_facilitator):
 
 
 @pytest.mark.django_db
-def test_revealed_payload_is_anonymous(room_with_facilitator):
-    """La charge utile ne doit contenir aucun lien participant -> carte."""
+def test_revealed_payload_is_nominative_by_default(room_with_facilitator):
+    """Defaut : le resultat montre qui a vote quoi."""
     room, facilitator, voter = room_with_facilitator
     services.set_subject(room, facilitator, "Recrutement")
+    services.open_vote(room, facilitator)
+    services.cast_vote(room, facilitator, "4")
+    services.cast_vote(room, voter, "4")
+    services.reveal(room, facilitator)
+
+    payload = services.revealed_payload(room)
+    assert payload["anonymous"] is False
+    assert {v["participantId"] for v in payload["votes"]} == {
+        str(facilitator.public_id), str(voter.public_id)
+    }
+
+
+@pytest.mark.django_db
+def test_revealed_payload_emits_no_link_when_anonymous(room_with_facilitator):
+    """Mode anonyme : aucun lien participant -> carte n'est emis (option payante,
+    posee ici directement sur le round pour tester la charge utile seule)."""
+    room, facilitator, voter = room_with_facilitator
+    services.set_subject(room, facilitator, "Recrutement")
+    room.current_session.is_anonymous = True
+    room.current_session.save(update_fields=["is_anonymous"])
     services.open_vote(room, facilitator)
     services.cast_vote(room, facilitator, "4")
     services.cast_vote(room, voter, "4")

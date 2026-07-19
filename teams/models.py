@@ -26,9 +26,9 @@ class Team(models.Model):
     # standard emerald felt + dark card-back base used by anonymous rooms.
     card_back_color = models.CharField(max_length=9, default="#143d2f")
     felt_color = models.CharField(max_length=9, default="#10b981")
-    # The deck this team's rooms are dealt from. Null = the vote type's standard
-    # deck (the only option until the team owns a custom one).
-    deck = models.ForeignKey("decks.Deck", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # The poker types this team plays. A room freezes all of them and the
+    # facilitator switches between them round by round. Empty = the standard deck.
+    decks = models.ManyToManyField("decks.Deck", blank=True, related_name="teams_enabled")
     # The card back, picked independently of the fronts. Null = the deck's own default.
     card_back = models.ForeignKey("decks.CardBack", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     # Billing (P2.7) is account-level: a team is "paid" via its owner's

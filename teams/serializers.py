@@ -15,6 +15,7 @@ class TeamSerializer(serializers.ModelSerializer):
     my_role = serializers.SerializerMethodField()
     member_count = serializers.SerializerMethodField()
     owner_email = serializers.EmailField(source="owner.email", read_only=True)
+    deck_ids = serializers.SerializerMethodField()
     is_paid = serializers.SerializerMethodField()
     billing_enabled = serializers.SerializerMethodField()
 
@@ -22,8 +23,11 @@ class TeamSerializer(serializers.ModelSerializer):
         model = Team
         fields = [
             "id", "name", "owner_email", "created_at", "my_role", "member_count",
-            "card_back_color", "felt_color", "deck_id", "card_back_id", "is_paid", "billing_enabled",
+            "card_back_color", "felt_color", "deck_ids", "card_back_id", "is_paid", "billing_enabled",
         ]
+
+    def get_deck_ids(self, team) -> list:
+        return list(team.decks.values_list("pk", flat=True))
 
     def get_is_paid(self, team) -> bool:
         return team_is_paid(team)

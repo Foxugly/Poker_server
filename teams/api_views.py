@@ -79,6 +79,7 @@ class TeamDetailView(APIView):
         if not is_admin(team, request.user):
             return error_response(code="forbidden", detail="Admin role required.", http_status=403)
         updates = []
+        deck_ids_to_set = None
         name = (request.data.get("name") or "").strip()
         if name:
             team.name = name
@@ -95,21 +96,19 @@ class TeamDetailView(APIView):
                     return error_response(code="invalid_color", detail="Expected #RRGGBB.", http_status=400)
                 setattr(team, field, color)
                 updates.append(field)
-        # Fronts (deck) and back are picked independently, and both are a paid
-        # feature. Null resets to the default. Only what this team may actually
-        # play is accepted — never another team's custom deck or back.
-        if "deck_id" in request.data or "card_back_id" in request.data:
-            if (err := paid_required(team)) is not None:
-                return err
-        if "deck_id" in request.data:
-            deck_id = request.data.get("deck_id")
-            if deck_id is None:
-                team.deck = None
-            elif not available_decks(team).filter(pk=deck_id).exists():
-                return error_response(code="deck_unavailable", detail="This deck is not available to this team.", http_status=400)
-            else:
-                team.deck_id = deck_id
-            updates.append("deck")
+        # Fronts (decks) and back are picked independently, and picking is free: what
+        # a subscription buys is a *bigger catalogue* (extra decks, custom decks,
+        # uploaded backs), which available_decks/available_card_backs enforce — not
+        # the gesture of choosing. Only what this team may actually play is accepted,
+        # never another team's custom deck or back. Null resets to the default.
+        if "deck_ids" in request.data:
+            raw = request.data.get("deck_ids") or []
+            if not isinstance(raw, list):
+                return error_response(code="invalid_deck_ids", detail="Expected a list of deck ids.", http_status=400)
+            ids = set(raw)
+            if len(available_decks(team).filter(pk__in=ids)) != len(ids):
+                return error_response(code="deck_unavailable", detail="One of these decks is not available to this team.", http_status=400)
+            deck_ids_to_set = ids
         if "card_back_id" in request.data:
             back_id = request.data.get("card_back_id")
             if back_id is None:
@@ -121,6 +120,8 @@ class TeamDetailView(APIView):
             updates.append("card_back")
         if updates:
             team.save(update_fields=updates)
+        if deck_ids_to_set is not None:
+            team.decks.set(deck_ids_to_set)
         return Response(TeamSerializer(team, context={"request": request}).data)
 
     def delete(self, request, team_id):
@@ -134,8 +135,8 @@ class TeamDetailView(APIView):
 class TeamDeckListView(APIView):
     """The decks this team may play with, and which one it currently plays.
 
-    ``can_create_custom`` tells the UI whether to offer deck creation: a custom
-    deck is a paid feature, so a free team sees the catalogue read-only.
+    Picking from the catalogue is free; ``can_customize`` tells the UI whether to
+    offer *extending* it (custom decks, uploaded backs), which a subscription buys.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -149,7 +150,7 @@ class TeamDeckListView(APIView):
         return Response(
             {
                 "decks": DeckSerializer(decks, many=True).data,
-                "selected_deck_id": team.deck_id,
+                "selected_deck_ids": list(team.decks.values_list("pk", flat=True)),
                 "card_backs": CardBackSerializer(backs, many=True).data,
                 "selected_card_back_id": team.card_back_id,
                 "can_customize": team_is_paid(team),

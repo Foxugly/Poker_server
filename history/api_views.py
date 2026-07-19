@@ -48,7 +48,7 @@ def _entries_for(team, day):
             {
                 "subject": r.subject.text,
                 "chosenValue": r.chosen_value,
-                "levelName": _level_name(room.deck_snapshot, r.chosen_value),
+                "levelName": _level_name(r.session.deck_snapshot or room.deck_snapshot, r.chosen_value),
                 "roomCode": room.code,
                 "decidedAt": r.decided_at.isoformat(),
             }

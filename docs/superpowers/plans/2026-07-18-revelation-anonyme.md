@@ -8,13 +8,28 @@
 
 **Tech Stack :** Django 6 + Channels + pytest ; Angular 21 standalone + signals + Vitest.
 
+> ### ⚠️ Amendé le 2026-07-19 — l'anonymat est devenu une **option de round**
+>
+> Décision produit postérieure à ce plan : la révélation est **nominative par défaut**, et
+> l'anonymat est une option que le facilitateur pose avant d'ouvrir le round, réservée aux
+> **équipes payantes**. Une salle gratuite (sans compte) reste donc nominative.
+>
+> Ce qui change : `revealed_payload` réémet la clé `votes` **quand le round est nominatif**.
+> Ce qui ne change pas : le principe ci-dessous vaut toujours **dans le mode anonyme** — on
+> n'y masque rien côté client, on cesse d'émettre. Voir `VoteSession.is_anonymous` et
+> `realtime/tests/test_reveal_mode.py`.
+>
+> Garde-fou ajouté : le mode est **figé à l'ouverture** et **annoncé à tous** dans `state.sync`
+> (`reveal.anonymous`), pas seulement au facilitateur — un votant doit savoir si sa carte
+> sortira avec son nom *avant* de la jouer.
+
 ## Le principe, à ne jamais contourner
 
 Masquer le tableau côté client serait de la façade : une trame WebSocket est lisible dans les outils de
 développement de n'importe quel navigateur. Tant que le serveur envoie « participant X a voté 4 »,
 les votes ne sont pas anonymes, quelle que soit l'interface.
 
-Le serveur ne doit donc plus jamais émettre de lien participant → carte après la révélation.
+Dans un round **anonyme**, le serveur ne doit donc jamais émettre de lien participant → carte.
 
 ## Global Constraints
 
