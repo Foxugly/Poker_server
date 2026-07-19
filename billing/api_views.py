@@ -27,6 +27,12 @@ logger = logging.getLogger("poker")
 User = get_user_model()
 
 
+def _iso(epoch):
+    if not epoch:
+        return None
+    return datetime.fromtimestamp(epoch, tz=timezone.get_current_timezone()).isoformat()
+
+
 def _sub_for(user):
     sub, _ = Subscription.objects.get_or_create(user=user)
     return sub
@@ -127,6 +133,65 @@ class SubscriptionView(APIView):
                 "canManage": bool(sub and sub.stripe_customer_id),
             }
         )
+
+
+class BillingHistoryView(APIView):
+    """Past + current subscriptions and their invoices, read live from Stripe.
+
+    Deliberately NOT mirrored in our database: Stripe is the system of record for
+    money, and a local copy would only add a reconciliation problem for data we
+    never query on. The invoice links are Stripe-hosted (signed, long-lived).
+
+    Degrades to empty lists rather than erroring, so the page renders when billing
+    is off or Stripe is briefly unreachable.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        sub = getattr(request.user, "subscription", None)
+        customer_id = sub.stripe_customer_id if sub else ""
+        stripe = stripe_client()
+        if stripe is None or not customer_id:
+            return Response({"billingEnabled": billing_configured(), "subscriptions": [], "invoices": []})
+
+        subscriptions, invoices = [], []
+        try:
+            for s in stripe.Subscription.list(customer=customer_id, status="all", limit=100).get("data", []):
+                try:
+                    price_id = s["items"]["data"][0]["price"]["id"]
+                except (KeyError, IndexError, TypeError):
+                    price_id = ""
+                plan, interval = plan_for_price(price_id)
+                subscriptions.append(
+                    {
+                        "id": s.get("id", ""),
+                        "status": s.get("status", ""),
+                        "plan": plan or "",
+                        "interval": interval or "",
+                        "startedAt": _iso(s.get("start_date")),
+                        "currentPeriodEnd": _iso(s.get("current_period_end")),
+                        "canceledAt": _iso(s.get("canceled_at")),
+                    }
+                )
+            for inv in stripe.Invoice.list(customer=customer_id, limit=100).get("data", []):
+                invoices.append(
+                    {
+                        "id": inv.get("id", ""),
+                        "number": inv.get("number") or "",
+                        "status": inv.get("status", ""),
+                        "amountPaid": inv.get("amount_paid", 0),   # cents
+                        "currency": (inv.get("currency") or "").upper(),
+                        "createdAt": _iso(inv.get("created")),
+                        "hostedUrl": inv.get("hosted_invoice_url") or "",
+                        "pdfUrl": inv.get("invoice_pdf") or "",
+                    }
+                )
+        except Exception:
+            # Never break the page on a Stripe hiccup — log and show what we have.
+            logger.exception("billing_history_failed")
+
+        return Response({"billingEnabled": True, "subscriptions": subscriptions, "invoices": invoices})
 
 
 class WebhookView(APIView):
