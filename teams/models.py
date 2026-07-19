@@ -9,8 +9,13 @@ from django.utils import timezone
 
 
 class TeamRole(models.TextChoices):
+    """Team-scoped roles. Deliberately NOT "facilitator": that word is taken by
+    ``rooms.Role.FACILITATOR``, who runs the current round — a per-session role any
+    member can hold and hand over. A manager administers the team, and may never
+    facilitate a single session."""
+
     OWNER = "owner", "Owner"
-    ADMIN = "admin", "Admin"
+    MANAGER = "manager", "Manager"
     MEMBER = "member", "Member"
 
 

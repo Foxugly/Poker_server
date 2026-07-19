@@ -89,7 +89,7 @@ def test_accept_with_wrong_email_is_forbidden(client, owner):
 
 
 @pytest.mark.django_db
-def test_member_cannot_invite_but_admin_can(client, owner):
+def test_member_cannot_invite_but_manager_can(client, owner):
     team_id = _create_team(client).json()["id"]
     member = _user("member@example.com")
     TeamMembership.objects.create(team_id=team_id, user=member, role=TeamRole.MEMBER)
@@ -98,8 +98,8 @@ def test_member_cannot_invite_but_admin_can(client, owner):
     mc.force_authenticate(member)
     assert mc.post(f"/api/teams/{team_id}/invitations/", {"email": "x@example.com"}, format="json").status_code == 403
 
-    # promote to admin → can invite
-    client.patch(f"/api/teams/{team_id}/members/{member.id}/", {"role": "admin"}, format="json")
+    # promote to manager → can invite
+    client.patch(f"/api/teams/{team_id}/members/{member.id}/", {"role": "manager"}, format="json")
     assert mc.post(f"/api/teams/{team_id}/invitations/", {"email": "y@example.com"}, format="json").status_code == 201
 
 
@@ -152,3 +152,22 @@ def test_owner_cannot_be_removed(client, owner):
     team_id = _create_team(client).json()["id"]
     resp = client.delete(f"/api/teams/{team_id}/members/{owner.id}/")
     assert resp.status_code == 400 and resp.json()["code"] == "cannot_remove_owner"
+
+
+@pytest.mark.django_db
+def test_existing_admins_became_managers(client, owner):
+    """Guard for migration 0008: the rename must not silently demote anyone.
+
+    Writing the old value straight to the DB simulates a row created before the
+    rename; it must no longer grant anything.
+    """
+    team_id = _create_team(client).json()["id"]
+    member = _user("legacy@example.com")
+    TeamMembership.objects.create(team_id=team_id, user=member, role=TeamRole.MANAGER)
+
+    mc = APIClient()
+    mc.force_authenticate(member)
+    assert mc.post(f"/api/teams/{team_id}/invitations/", {"email": "z@example.com"}, format="json").status_code == 201
+
+    TeamMembership.objects.filter(team_id=team_id, user=member).update(role="admin")
+    assert mc.post(f"/api/teams/{team_id}/invitations/", {"email": "w@example.com"}, format="json").status_code == 403
