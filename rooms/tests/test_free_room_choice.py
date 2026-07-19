@@ -81,10 +81,9 @@ def test_no_choice_falls_back_to_the_first_free_deck(client, standard_deck):
 
 @pytest.mark.django_db
 def test_picked_free_card_back_wins_over_the_deck_default(client, standard_deck):
-    back = CardBack.objects.create(is_standard=True, free_tier=True, image="decks/backs/picked.webp")
-    back.set_current_language("en")
-    back.name = "Picked"
-    back.save()
+    back = CardBack.objects.create(
+        is_standard=True, free_tier=True, image="decks/backs/picked.webp", name="Picked"
+    )
 
     resp = client.post(
         "/api/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"
@@ -96,10 +95,9 @@ def test_picked_free_card_back_wins_over_the_deck_default(client, standard_deck)
 
 @pytest.mark.django_db
 def test_a_paid_only_card_back_is_ignored(client, standard_deck):
-    back = CardBack.objects.create(is_standard=True, free_tier=False, image="decks/backs/paid.webp")
-    back.set_current_language("en")
-    back.name = "Paid"
-    back.save()
+    back = CardBack.objects.create(
+        is_standard=True, free_tier=False, image="decks/backs/paid.webp", name="Paid"
+    )
 
     resp = client.post(
         "/api/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"

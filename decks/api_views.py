@@ -20,7 +20,7 @@ class FreeCatalogueView(APIView):
 
     def get(self, request):
         decks = available_decks(None).prefetch_related("cards", "translations")
-        backs = available_card_backs(None).prefetch_related("translations")
+        backs = available_card_backs(None)
         return Response(
             {
                 "decks": DeckSerializer(decks, many=True).data,

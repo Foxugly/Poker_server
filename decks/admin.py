@@ -29,6 +29,6 @@ class DeckAdmin(TranslatableAdmin):
 
 
 @admin.register(CardBack)
-class CardBackAdmin(TranslatableAdmin):
+class CardBackAdmin(admin.ModelAdmin):
     list_display = ("__str__", "team", "is_standard", "free_tier", "is_active")
     list_filter = ("is_standard", "free_tier", "is_active")

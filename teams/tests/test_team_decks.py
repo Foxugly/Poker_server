@@ -163,11 +163,9 @@ def test_deck_str_prefers_english_then_french_then_technical(team, standard_deck
 
 
 def _custom_back(team, name="Custom back"):
-    back = CardBack.objects.create(team=team, is_standard=False, image="decks/backs/custom.webp")
-    back.set_current_language("en")
-    back.name = name
-    back.save()
-    return back
+    return CardBack.objects.create(
+        team=team, is_standard=False, image="decks/backs/custom.webp", name=name
+    )
 
 
 @pytest.mark.django_db
