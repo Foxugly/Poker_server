@@ -52,19 +52,21 @@ def standard_deck(vote_type_code: str = DELEGATION_POKER_CODE):
     )
 
 
-def deck_for_team(team):
-    """The deck a new room for this team is dealt from.
+def decks_for_team(team):
+    """Every deck a new room for this team may play, in catalogue order.
 
-    Falls back to the standard deck when the team never picked one, and also when
-    its pick has since been deactivated — a stale choice must not break room
-    creation. Returns None only when no standard deck is configured at all.
+    Falls back to the standard deck when the team enabled none, and drops picks
+    that were since deactivated or reassigned — a stale choice must not break room
+    creation. Returns [] only when no standard deck is configured at all.
     """
-    if team is not None and team.deck_id is not None:
-        deck = (
-            Deck.objects.filter(pk=team.deck_id, is_active=True)
+    if team is not None:
+        enabled = list(
+            team.decks.filter(is_active=True)
+            .filter(Q(team__isnull=True, is_standard=True) | Q(team=team))
             .select_related("vote_type")
-            .first()
+            .order_by("-is_standard", "pk")
         )
-        if deck is not None and (deck.team_id is None or deck.team_id == team.pk):
-            return deck
-    return standard_deck()
+        if enabled:
+            return enabled
+    standard = standard_deck()
+    return [standard] if standard is not None else []

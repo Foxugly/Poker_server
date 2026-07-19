@@ -70,7 +70,7 @@ class Deck(TranslatableModel):
 
     vote_type = models.ForeignKey(VoteType, on_delete=models.PROTECT, related_name="decks")
     team = models.ForeignKey(
-        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="decks"
+        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_decks"
     )
     is_standard = models.BooleanField(default=True)
     card_back_image = models.ImageField(upload_to="decks/backs/")

@@ -15,7 +15,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from config.api_errors import error_response
-from decks.selection import DELEGATION_POKER_CODE, card_back_for_team, deck_for_team
+from decks.selection import DELEGATION_POKER_CODE, card_back_for_team, decks_for_team
 from teams.models import Team
 from teams.permissions import is_member
 
@@ -62,19 +62,26 @@ class CreateRoomView(APIView):
             if not display_name:
                 return error_response(code="username_required", detail="A display name is required.", http_status=400)
 
-        # The team's picked deck (falling back to the standard one); anonymous rooms
-        # always get the standard deck.
-        deck = deck_for_team(team)
-        if deck is None:
+        # Every poker type the team enabled, frozen for this room's whole life; the
+        # facilitator switches between them round by round. Anonymous rooms get the
+        # standard deck alone.
+        decks = decks_for_team(team)
+        if not decks:
             return Response({"detail": "No standard deck configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        snapshot = build_deck_snapshot(deck, card_back_for_team(team))
+        card_back = card_back_for_team(team)
+        snapshots = [build_deck_snapshot(d, card_back) for d in decks]
         if team is not None:
-            # Apply the team's appearance customization (P2.6) to this room's snapshot.
-            snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
+            # Apply the team's appearance customization (P2.6) to this room's decks.
+            theme = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
+            for snap in snapshots:
+                snap["theme"] = theme
+        snapshot = snapshots[0]
+        deck = decks[0]
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
         room = Room(
-            code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot, team=team,
+            code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot,
+            deck_snapshots=snapshots, team=team,
             max_participants=settings.ROOM_MAX_PARTICIPANTS,
         )
         room.touch(save=False)
@@ -90,6 +97,7 @@ class CreateRoomView(APIView):
                 "participantToken": facilitator.token,
                 "role": Role.FACILITATOR,
                 "deckSnapshot": snapshot,
+                "availableDecks": snapshots,
                 "isTeam": team is not None,
             },
             status=status.HTTP_201_CREATED,
@@ -141,6 +149,7 @@ class JoinRoomView(APIView):
                 "participantToken": participant.token,
                 "role": participant.role,
                 "deckSnapshot": room.deck_snapshot,
+                "availableDecks": room.deck_snapshots or [room.deck_snapshot],
                 "isTeam": room.team_id is not None,
             },
             status=status.HTTP_200_OK,

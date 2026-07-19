@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from decks.models import CardBack, Deck
-from decks.selection import card_back_for_team, deck_for_team
+from decks.selection import card_back_for_team, decks_for_team
 from teams.models import Team, TeamMembership, TeamRole
 
 User = get_user_model()
@@ -51,7 +51,7 @@ def test_catalogue_lists_standard_deck_and_defaults_to_it(client, team, standard
     assert resp.status_code == 200
     body = resp.json()
     assert [d["id"] for d in body["decks"]] == [standard_deck.pk]
-    assert body["selected_deck_id"] is None
+    assert body["selected_deck_ids"] == []
     assert body["decks"][0]["is_custom"] is False
     assert len(body["decks"][0]["cards"]) == 7
 
@@ -68,18 +68,18 @@ def test_catalogue_includes_own_custom_deck_but_not_another_teams(client, team, 
 
 
 @pytest.mark.django_db
-def test_pick_deck_and_reset_to_standard(client, team, standard_deck):
+def test_enable_several_decks_and_clear(client, team, standard_deck):
     mine = _custom_deck(team, standard_deck.vote_type)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_id": mine.pk}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [standard_deck.pk, mine.pk]}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
-    assert team.deck_id == mine.pk
+    assert set(team.decks.values_list("pk", flat=True)) == {standard_deck.pk, mine.pk}
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_id": None}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": []}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
-    assert team.deck_id is None
+    assert team.decks.count() == 0
 
 
 @pytest.mark.django_db
@@ -87,11 +87,11 @@ def test_cannot_pick_another_teams_deck(client, team, standard_deck):
     other_team = Team.objects.create(name="Other", owner=_user("other@example.com"))
     theirs = _custom_deck(other_team, standard_deck.vote_type)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_id": theirs.pk}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [theirs.pk]}, format="json")
     assert resp.status_code == 400
     assert resp.json()["code"] == "deck_unavailable"
     team.refresh_from_db()
-    assert team.deck_id is None
+    assert team.decks.count() == 0
 
 
 @pytest.mark.django_db
@@ -102,25 +102,26 @@ def test_non_member_cannot_read_catalogue(team, standard_deck):
 
 
 @pytest.mark.django_db
-def test_room_is_dealt_from_the_picked_deck(client, team, standard_deck):
+def test_room_freezes_every_enabled_deck(client, team, standard_deck):
     mine = _custom_deck(team, standard_deck.vote_type)
-    team.deck = mine
-    team.save(update_fields=["deck"])
+    team.decks.set([mine.pk, standard_deck.pk])
 
     resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
     assert resp.status_code == 201
-    assert resp.json()["deckSnapshot"]["deckId"] == mine.pk
+    body = resp.json()
+    assert {d["deckId"] for d in body["availableDecks"]} == {mine.pk, standard_deck.pk}
+    # The first enabled deck is the one in play.
+    assert body["deckSnapshot"]["deckId"] in {mine.pk, standard_deck.pk}
 
 
 @pytest.mark.django_db
 def test_deactivated_pick_falls_back_to_standard(team, standard_deck):
     """A stale pick must not break room creation — it silently falls back."""
     mine = _custom_deck(team, standard_deck.vote_type)
-    team.deck = mine
-    team.save(update_fields=["deck"])
+    team.decks.set([mine.pk])
     Deck.objects.filter(pk=mine.pk).update(is_active=False)
 
-    assert deck_for_team(team).pk == standard_deck.pk
+    assert [d.pk for d in decks_for_team(team)] == [standard_deck.pk]
 
 
 @pytest.mark.django_db
@@ -190,7 +191,7 @@ def test_back_and_deck_are_picked_independently(client, team, standard_deck):
     team.refresh_from_db()
     # Picking a back leaves the fronts untouched.
     assert team.card_back_id == back.pk
-    assert team.deck_id is None
+    assert team.decks.count() == 0
 
 
 @pytest.mark.django_db

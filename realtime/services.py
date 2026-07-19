@@ -40,7 +40,9 @@ def _card_values(room):
     by ``Card.order`` — see ``rooms.snapshot.build_deck_snapshot``). Returned as a
     list, not a set: callers that display a per-value tally (``revealed_payload``)
     depend on this order being stable across reveals."""
-    return [card["value"] for card in room.deck_snapshot.get("cards", [])]
+    session = room.current_session
+    snapshot = (session.deck_snapshot if session and session.deck_snapshot else room.deck_snapshot)
+    return [card["value"] for card in (snapshot or {}).get("cards", [])]
 
 
 def resolve_participant(code, token):
@@ -193,6 +195,9 @@ def open_vote(room, participant):
         raise RoomError("state.invalid_transition", "No subject set", "vote.open")
     if session.state != RoundState.IDLE:
         raise RoomError("state.invalid_transition", "Not idle", "vote.open")
+    # Freeze the deck this round is played with: the room's active deck may change
+    # afterwards, and the round's values must keep their meaning (history labels).
+    session.deck_snapshot = room.deck_snapshot
     session.state = RoundState.OPEN
     session.opened_at = timezone.now()
     session.vote_deadline = (
@@ -200,7 +205,7 @@ def open_vote(room, participant):
         if room.timer_enabled
         else None
     )
-    session.save(update_fields=["state", "opened_at", "vote_deadline"])
+    session.save(update_fields=["deck_snapshot", "state", "opened_at", "vote_deadline"])
     room.touch()
     return session.vote_deadline
 
@@ -293,10 +298,11 @@ def reset_round(room, participant):
         raise RoomError("state.invalid_transition", "No round", "vote.reset")
     session.votes.all().delete()
     session.state = RoundState.IDLE
+    session.deck_snapshot = None
     session.opened_at = None
     session.revealed_at = None
     session.vote_deadline = None
-    session.save(update_fields=["state", "opened_at", "revealed_at", "vote_deadline"])
+    session.save(update_fields=["deck_snapshot", "state", "opened_at", "revealed_at", "vote_deadline"])
     room.touch()
     return "idle"
 
@@ -429,6 +435,45 @@ def transfer_facilitator(room, participant, target_public_id):
     return str(target.public_id)
 
 
+def active_deck_snapshot(room):
+    """The deck in play: the current round's frozen one, else the room's active one."""
+    session = room.current_session
+    if session is not None and session.deck_snapshot:
+        return session.deck_snapshot
+    return room.deck_snapshot
+
+
+def available_decks_payload(room):
+    """The room's frozen deck catalogue, light enough for a picker (no cards)."""
+    snapshots = room.deck_snapshots or [room.deck_snapshot]
+    return [
+        {"deckId": s.get("deckId"), "voteType": s.get("voteType"), "cardBack": s.get("cardBack")}
+        for s in snapshots
+        if s
+    ]
+
+
+def select_deck(room, participant, deck_id):
+    """Switch the room's active deck (facilitator only).
+
+    Refused while a round is in flight (OPEN/REVEALED): votes already cast
+    reference the current deck's values. A round that is IDLE or already ACTED is
+    safe — a played round keeps its own frozen deck either way.
+    """
+    _require_facilitator(room, participant, "deck.select")
+    session = _current_session(room)
+    if session is not None and session.state in (RoundState.OPEN, RoundState.REVEALED):
+        raise RoomError("state.invalid_transition", "Finish the round before switching deck", "deck.select")
+    snapshots = room.deck_snapshots or [room.deck_snapshot]
+    chosen = next((s for s in snapshots if s and s.get("deckId") == deck_id), None)
+    if chosen is None:
+        raise RoomError("state.invalid_transition", "Deck not available in this room", "deck.select")
+    room.deck_snapshot = chosen
+    room.save(update_fields=["deck_snapshot"])
+    room.touch()
+    return chosen
+
+
 def build_state_sync(participant):
     """Full current-state snapshot for a single client (contract §5.1). No history replay."""
     room = participant.room
@@ -450,7 +495,8 @@ def build_state_sync(participant):
         "protocolVersion": 1,
         "roundState": round_state,
         "subject": subject_text,
-        "deckSnapshot": room.deck_snapshot,
+        "deckSnapshot": active_deck_snapshot(room),
+        "availableDecks": available_decks_payload(room),
         "participants": participants_list(room),
         "myVote": my_vote,
         "result": result,

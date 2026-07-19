@@ -27,7 +27,12 @@ class Room(models.Model):
     code = models.CharField(max_length=8, unique=True)  # UPPER, ambiguous chars excluded
     title = models.CharField(max_length=120, blank=True)
     vote_type = models.ForeignKey("decks.VoteType", on_delete=models.PROTECT)
-    deck_snapshot = models.JSONField()  # frozen at creation, immutable (spec §4)
+    # The deck currently in play. Frozen from the referential at creation; it only
+    # ever changes by swapping in another entry of ``deck_snapshots`` (never edited).
+    deck_snapshot = models.JSONField()
+    # Every deck this room may play, frozen at creation (the team's enabled poker
+    # types). Self-sufficient like deck_snapshot — the runtime never reads ``decks``.
+    deck_snapshots = models.JSONField(default=list, blank=True)
     current_session = models.ForeignKey(
         "rooms.VoteSession", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
@@ -106,6 +111,10 @@ class VoteSession(models.Model):
     facilitator = models.ForeignKey(
         Participant, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # The deck this round was played with, frozen when the round starts. The room's
+    # active deck can change between rounds, so results must not be relabelled by a
+    # later switch (history maps chosen_value -> label through this).
+    deck_snapshot = models.JSONField(null=True, blank=True)
     opened_at = models.DateTimeField(null=True, blank=True)
     revealed_at = models.DateTimeField(null=True, blank=True)
     # Echeance du vote, posee a l'ouverture quand le timer est actif. Le serveur

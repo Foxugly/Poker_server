@@ -106,6 +106,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self._cancel_timeout(room.code)
             await self._broadcast("vote.wasReset", {"nextState": next_state})
             await self._broadcast_participation(room)
+        elif mtype == "deck.select":
+            snapshot = await database_sync_to_async(services.select_deck)(room, participant, payload.get("deckId"))
+            await self._broadcast("deck.changed", {"deckSnapshot": snapshot})
         elif mtype == "timer.set":
             settings_ = await database_sync_to_async(services.set_timer)(
                 room, participant, payload.get("enabled"), payload.get("seconds")
