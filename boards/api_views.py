@@ -11,7 +11,7 @@ from billing.service import paid_required
 from config.api_errors import error_response
 from decks.models import Deck, TextLayerKind
 from teams.models import Team
-from teams.permissions import is_admin, is_member
+from teams.permissions import is_manager, is_member
 
 from .models import Board, BoardRow
 
@@ -75,8 +75,8 @@ class BoardRowListView(APIView):
     @transaction.atomic
     def post(self, request, team_id):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         if (err := paid_required(team)) is not None:
             return err
         topic = (request.data.get("topic") or "").strip()
@@ -96,8 +96,8 @@ class BoardRowDetailView(APIView):
 
     def _row(self, team_id, row_id, user):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, user):
-            return None, error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, user):
+            return None, error_response(code="forbidden", detail="Manager role required.", http_status=403)
         if (err := paid_required(team)) is not None:
             return None, err
         row = get_object_or_404(BoardRow, pk=row_id, board__team=team)

@@ -58,7 +58,7 @@ class MembershipSerializer(serializers.ModelSerializer):
 
 class RoleUpdateSerializer(serializers.Serializer):
     # Owner role is transferred via a dedicated flow, not this endpoint.
-    role = serializers.ChoiceField(choices=[TeamRole.ADMIN, TeamRole.MEMBER])
+    role = serializers.ChoiceField(choices=[TeamRole.MANAGER, TeamRole.MEMBER])
 
 
 class InvitationSerializer(serializers.ModelSerializer):
@@ -69,7 +69,7 @@ class InvitationSerializer(serializers.ModelSerializer):
 
 class InviteCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    role = serializers.ChoiceField(choices=[TeamRole.ADMIN, TeamRole.MEMBER], default=TeamRole.MEMBER)
+    role = serializers.ChoiceField(choices=[TeamRole.MANAGER, TeamRole.MEMBER], default=TeamRole.MEMBER)
 
     def validate_email(self, value):
         return value.strip().lower()

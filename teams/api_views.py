@@ -16,7 +16,7 @@ from decks.serializers import CardBackSerializer, DeckSerializer
 
 from .invitations import send_invitation_email
 from .models import Invitation, Team, TeamMembership, TeamRole
-from .permissions import is_admin, is_member, is_owner, membership_of
+from .permissions import is_manager, is_member, is_owner, membership_of
 from .serializers import (
     AcceptInviteSerializer,
     InvitationSerializer,
@@ -76,8 +76,8 @@ class TeamDetailView(APIView):
 
     def patch(self, request, team_id):
         team = self._team(team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         updates = []
         deck_ids_to_set = None
         name = (request.data.get("name") or "").strip()
@@ -174,8 +174,8 @@ class MemberDetailView(APIView):
 
     def patch(self, request, team_id, user_id):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         membership = get_object_or_404(TeamMembership, team=team, user_id=user_id)
         if membership.role == TeamRole.OWNER:
             return error_response(code="cannot_change_owner", detail="The owner's role can't be changed here.", http_status=400)
@@ -189,8 +189,8 @@ class MemberDetailView(APIView):
         team = get_object_or_404(Team, pk=team_id)
         membership = get_object_or_404(TeamMembership, team=team, user_id=user_id)
         is_self = str(request.user.id) == str(user_id)
-        if not (is_self or is_admin(team, request.user)):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not (is_self or is_manager(team, request.user)):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         if membership.role == TeamRole.OWNER:
             return error_response(code="cannot_remove_owner", detail="The owner can't leave; transfer ownership first.", http_status=400)
         membership.delete()
@@ -202,15 +202,15 @@ class InvitationListCreateView(APIView):
 
     def get(self, request, team_id):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         pending = team.invitations.filter(accepted_at__isnull=True, expires_at__gt=timezone.now())
         return Response(InvitationSerializer(pending, many=True).data)
 
     def post(self, request, team_id):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         serializer = InviteCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"]
@@ -234,8 +234,8 @@ class InvitationDetailView(APIView):
 
     def delete(self, request, team_id, inv_id):
         team = get_object_or_404(Team, pk=team_id)
-        if not is_admin(team, request.user):
-            return error_response(code="forbidden", detail="Admin role required.", http_status=403)
+        if not is_manager(team, request.user):
+            return error_response(code="forbidden", detail="Manager role required.", http_status=403)
         get_object_or_404(Invitation, team=team, pk=inv_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
