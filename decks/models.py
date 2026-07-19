@@ -48,6 +48,9 @@ class CardBack(TranslatableModel):
         "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="card_backs"
     )
     is_standard = models.BooleanField(default=True)
+    # Included in the free offer. Distinct from is_standard, which says who OWNS a
+    # back (nobody vs a team): a common back can still be reserved to paid teams.
+    free_tier = models.BooleanField(default=True)
     image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -73,6 +76,9 @@ class Deck(TranslatableModel):
         "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_decks"
     )
     is_standard = models.BooleanField(default=True)
+    # Included in the free offer. Distinct from is_standard, which says who OWNS a
+    # deck (nobody vs a team): a common deck can still be reserved to paid teams.
+    free_tier = models.BooleanField(default=True)
     card_back_image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
