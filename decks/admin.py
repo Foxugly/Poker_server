@@ -1,7 +1,7 @@
 from django.contrib import admin
 from parler.admin import TranslatableAdmin, TranslatableTabularInline
 
-from .models import Card, CardBack, Deck, TextLayer, VoteType
+from .models import Card, CardBack, Deck, Felt, TextLayer, VoteType
 
 
 @admin.register(VoteType)
@@ -30,5 +30,11 @@ class DeckAdmin(TranslatableAdmin):
 
 @admin.register(CardBack)
 class CardBackAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "team", "is_standard", "free_tier", "is_active")
+    list_filter = ("is_standard", "free_tier", "is_active")
+
+
+@admin.register(Felt)
+class FeltAdmin(admin.ModelAdmin):
     list_display = ("__str__", "team", "is_standard", "free_tier", "is_active")
     list_filter = ("is_standard", "free_tier", "is_active")

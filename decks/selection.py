@@ -6,7 +6,7 @@ team being offered a deck that room creation then refuses.
 """
 from django.db.models import Q
 
-from .models import CardBack, Deck
+from .models import CardBack, Deck, Felt
 
 DELEGATION_POKER_CODE = "delegation_poker"
 
@@ -47,6 +47,24 @@ def free_card_back_by_id(card_back_id):
     if card_back_id is None:
         return None
     return next((b for b in available_card_backs(None) if b.pk == card_back_id), None)
+
+
+def available_felts(team=None):
+    """Active felts the team may pick: every standard one, plus its own."""
+    qs = Felt.objects.filter(is_active=True)
+    if team is None:
+        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
+    return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
+
+
+def felt_for_team(team):
+    """The team's picked felt, or None. A deactivated or reassigned pick falls back."""
+    if team is None or team.felt_id is None:
+        return None
+    felt = Felt.objects.filter(pk=team.felt_id, is_active=True).first()
+    if felt is not None and (felt.team_id is None or felt.team_id == team.pk):
+        return felt
+    return None
 
 
 def card_back_for_team(team):

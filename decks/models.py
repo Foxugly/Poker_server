@@ -63,6 +63,24 @@ class CardBack(models.Model):
         return self.name or f"CardBack<{self.pk}>"
 
 
+class Felt(models.Model):
+    """A table felt, catalogued like card backs so a team can pick an image instead
+    of a flat colour. ``name`` is a plain label, not a parler field."""
+
+    team = models.ForeignKey(
+        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="felts"
+    )
+    is_standard = models.BooleanField(default=True)
+    free_tier = models.BooleanField(default=True)
+    name = models.CharField(max_length=120, blank=True, default="")
+    image = models.ImageField(upload_to="decks/felts/")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name or f"Felt<{self.pk}>"
+
+
 class Deck(TranslatableModel):
     """A set of cards for a vote type (spec §3.2). A deck is either *standard*
     (``team`` null, offered to every team) or a team's own custom deck."""

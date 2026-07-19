@@ -21,6 +21,7 @@ from decks.selection import (
     decks_for_team,
     free_card_back_by_id,
     free_decks_by_ids,
+    felt_for_team,
 )
 from teams.models import Team
 from teams.permissions import is_member
@@ -28,7 +29,7 @@ from teams.permissions import is_member
 from .api_serializers import CreateRoomSerializer, JoinRoomSerializer
 from .codes import generate_token, generate_unique_code, normalize_code
 from .models import Participant, Role, Room
-from .snapshot import build_deck_snapshot
+from .snapshot import apply_team_appearance, build_deck_snapshot
 
 
 def _live_room_or_none(code):
@@ -83,10 +84,10 @@ class CreateRoomView(APIView):
 
         snapshots = [build_deck_snapshot(d, card_back) for d in decks]
         if team is not None:
-            # Apply the team's appearance customization (P2.6) to this room's decks.
-            theme = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
+            # Appearance (P2.6): each surface honours the team's chosen style.
+            felt = felt_for_team(team)
             for snap in snapshots:
-                snap["theme"] = theme
+                apply_team_appearance(snap, team, card_back=card_back, felt=felt)
         snapshot = snapshots[0]
         deck = decks[0]
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())

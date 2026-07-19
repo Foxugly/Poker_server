@@ -11,11 +11,11 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 
 from billing.service import paid_required, team_is_paid, user_is_paid, user_quota
-from decks.selection import available_card_backs, available_decks
-from decks.serializers import CardBackSerializer, DeckSerializer
+from decks.selection import available_card_backs, available_decks, available_felts
+from decks.serializers import CardBackSerializer, DeckSerializer, FeltSerializer
 
 from .invitations import send_invitation_email
-from .models import Invitation, Team, TeamMembership, TeamRole
+from .models import Invitation, SurfaceStyle, Team, TeamMembership, TeamRole
 from .permissions import is_manager, is_member, is_owner, membership_of
 from .serializers import (
     AcceptInviteSerializer,
@@ -109,6 +109,22 @@ class TeamDetailView(APIView):
             if len(available_decks(team).filter(pk__in=ids)) != len(ids):
                 return error_response(code="deck_unavailable", detail="One of these decks is not available to this team.", http_status=400)
             deck_ids_to_set = ids
+        for style_field in ("card_back_style", "felt_style"):
+            if style_field in request.data:
+                value = request.data.get(style_field)
+                if value not in dict(SurfaceStyle.choices):
+                    return error_response(code="invalid_style", detail="Expected 'color' or 'image'.", http_status=400)
+                setattr(team, style_field, value)
+                updates.append(style_field)
+        if "felt_id" in request.data:
+            felt_id = request.data.get("felt_id")
+            if felt_id is None:
+                team.felt = None
+            elif not available_felts(team).filter(pk=felt_id).exists():
+                return error_response(code="felt_unavailable", detail="This felt is not available to this team.", http_status=400)
+            else:
+                team.felt_id = felt_id
+            updates.append("felt")
         if "card_back_id" in request.data:
             back_id = request.data.get("card_back_id")
             if back_id is None:
@@ -153,6 +169,8 @@ class TeamDeckListView(APIView):
                 "selected_deck_ids": list(team.decks.values_list("pk", flat=True)),
                 "card_backs": CardBackSerializer(backs, many=True).data,
                 "selected_card_back_id": team.card_back_id,
+                "felts": FeltSerializer(available_felts(team), many=True).data,
+                "selected_felt_id": team.felt_id,
                 "can_customize": team_is_paid(team),
             }
         )
