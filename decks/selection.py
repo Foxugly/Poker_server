@@ -18,7 +18,8 @@ def available_decks(team=None):
     """
     qs = Deck.objects.filter(is_active=True).select_related("vote_type")
     if team is None:
-        return qs.filter(team__isnull=True, is_standard=True).order_by("pk")
+        # Account-less room: the free subset only.
+        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
     return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
 
 
@@ -26,8 +27,26 @@ def available_card_backs(team=None):
     """Active card backs the team may pick: every standard one, plus its own."""
     qs = CardBack.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(team__isnull=True, is_standard=True).order_by("pk")
+        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
     return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
+
+
+def free_decks_by_ids(deck_ids):
+    """The free decks matching these ids, in catalogue order.
+
+    Silently drops anything not in the free catalogue rather than erroring: the
+    ids come from a public, unauthenticated payload.
+    """
+    catalogue = list(available_decks(None))
+    wanted = set(deck_ids or [])
+    chosen = [d for d in catalogue if d.pk in wanted]
+    return chosen or catalogue[:1]
+
+
+def free_card_back_by_id(card_back_id):
+    if card_back_id is None:
+        return None
+    return next((b for b in available_card_backs(None) if b.pk == card_back_id), None)
 
 
 def card_back_for_team(team):

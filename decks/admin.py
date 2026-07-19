@@ -24,10 +24,11 @@ class CardAdmin(admin.ModelAdmin):
 
 @admin.register(Deck)
 class DeckAdmin(TranslatableAdmin):
-    list_display = ("__str__", "vote_type", "is_standard", "is_active")
+    list_display = ("__str__", "vote_type", "team", "is_standard", "free_tier", "is_active")
+    list_filter = ("is_standard", "free_tier", "is_active")
 
 
 @admin.register(CardBack)
 class CardBackAdmin(TranslatableAdmin):
-    list_display = ("__str__", "team", "is_standard", "is_active")
-    list_filter = ("is_standard", "is_active")
+    list_display = ("__str__", "team", "is_standard", "free_tier", "is_active")
+    list_filter = ("is_standard", "free_tier", "is_active")
