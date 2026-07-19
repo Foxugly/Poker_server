@@ -115,6 +115,11 @@ class VoteSession(models.Model):
     # active deck can change between rounds, so results must not be relabelled by a
     # later switch (history maps chosen_value -> label through this).
     deck_snapshot = models.JSONField(null=True, blank=True)
+    # Reveal mode, chosen by the facilitator and frozen when the round opens.
+    # Nominative by default (who voted what); anonymous hides the participant->card
+    # link entirely and is a paid-team option. Voters see the mode BEFORE voting —
+    # switching it after votes are in would expose people who thought otherwise.
+    is_anonymous = models.BooleanField(default=False)
     opened_at = models.DateTimeField(null=True, blank=True)
     revealed_at = models.DateTimeField(null=True, blank=True)
     # Echeance du vote, posee a l'ouverture quand le timer est actif. Le serveur

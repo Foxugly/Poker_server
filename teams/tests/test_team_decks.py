@@ -242,3 +242,15 @@ def test_seed_command_creates_the_back_on_a_preexisting_install(standard_deck):
     call_command("seed_delegation_deck")
 
     assert CardBack.objects.filter(is_standard=True, team__isnull=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_picking_from_the_catalogue_is_free(client, team, standard_deck, monkeypatch):
+    """A subscription buys a bigger catalogue, not the right to choose from it."""
+    monkeypatch.setattr("teams.api_views.paid_required", lambda t: None)
+    monkeypatch.setattr("billing.service.billing_configured", lambda: True)
+
+    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [standard_deck.pk]}, format="json")
+    assert resp.status_code == 200
+    team.refresh_from_db()
+    assert list(team.decks.values_list("pk", flat=True)) == [standard_deck.pk]

@@ -340,13 +340,17 @@ def participation(room):
 
 
 def revealed_payload(room):
-    """Decompte anonyme des votes — ONLY ever called in REVEALED state
-    (secret-of-votes, contract §6.a).
+    """Resultat d'un round revele — ONLY ever called in REVEALED state.
 
-    Ne renvoie AUCUN lien participant -> carte : l'anonymat s'obtient en n'emettant
-    pas la donnee, pas en la masquant cote client (une trame WS est lisible dans les
-    outils de developpement du navigateur). Seules les valeurs ayant au moins une
-    voix figurent dans le decompte, dans l'ordre du deck.
+    Deux modes, choisis par le facilitateur a l'ouverture (``session.is_anonymous``) :
+
+    - **nominatif** (defaut) : le decompte + la liste participant -> carte ;
+    - **anonyme** (option des equipes payantes) : le decompte SEUL. La cle ``votes``
+      n'est alors pas emise du tout — masquer cote client serait de la facade, une
+      trame WS etant lisible dans les outils de developpement du navigateur.
+
+    Le mode est fige a l'ouverture et annonce aux votants avant qu'ils votent : le
+    basculer une fois les votes emis exposerait des gens qui se croyaient anonymes.
     """
     session = _current_session(room)
     votes = list(Vote.objects.filter(session=session))
@@ -358,7 +362,15 @@ def revealed_payload(room):
     ]
     numeric = [int(v.card_value) for v in votes if v.card_value.isdigit()]
     spread = {"min": min(numeric), "max": max(numeric)} if numeric else {"min": None, "max": None}
-    return {"tally": tally, "spread": spread}
+    payload = {"tally": tally, "spread": spread, "anonymous": bool(session and session.is_anonymous)}
+    if not (session and session.is_anonymous):
+        by_participant = {v.participant_id: v.card_value for v in votes}
+        payload["votes"] = [
+            {"participantId": str(p.public_id), "cardValue": by_participant[p.id]}
+            for p in room.participants.all()
+            if p.id in by_participant
+        ]
+    return payload
 
 
 def participants_list(room):
@@ -453,6 +465,36 @@ def available_decks_payload(room):
     ]
 
 
+def set_reveal_mode(room, participant, anonymous):
+    """Choose how the next reveal shows the votes (facilitator only).
+
+    Anonymous reveal is a paid-team option; a free/anonymous room stays nominative.
+    Only settable while the round is IDLE: voters are told the mode before voting,
+    so flipping it under cast votes would expose people who believed otherwise.
+    """
+    _require_facilitator(room, participant, "reveal.setMode")
+    anonymous = bool(anonymous)
+    if anonymous and not _team_may_anonymise(room):
+        raise RoomError("forbidden.subscription_required", "Anonymous reveal requires a subscription", "reveal.setMode")
+    session = _current_session(room)
+    if session is None:
+        raise RoomError("state.invalid_transition", "No round", "reveal.setMode")
+    if session.state != RoundState.IDLE:
+        raise RoomError("state.invalid_transition", "Set the mode before opening the vote", "reveal.setMode")
+    session.is_anonymous = anonymous
+    session.save(update_fields=["is_anonymous"])
+    room.touch()
+    return anonymous
+
+
+def _team_may_anonymise(room):
+    if room.team_id is None:
+        return False
+    from billing.service import team_is_paid
+
+    return team_is_paid(room.team)
+
+
 def select_deck(room, participant, deck_id):
     """Switch the room's active deck (facilitator only).
 
@@ -504,6 +546,12 @@ def build_state_sync(participant):
         "agenda": build_agenda(room),
         "deadline": deadline_iso(room),
         "timer": {"enabled": room.timer_enabled, "seconds": room.timer_seconds},
+        # Announced to everyone, not just the facilitator: a voter must know whether
+        # their card will be shown with their name before they play it.
+        "reveal": {
+            "anonymous": bool(session and session.is_anonymous),
+            "canAnonymise": _team_may_anonymise(room),
+        },
     }
     # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e) — the
     # anonymous tally only, same as everyone else post-reveal (no participant->card

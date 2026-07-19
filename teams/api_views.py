@@ -96,12 +96,11 @@ class TeamDetailView(APIView):
                     return error_response(code="invalid_color", detail="Expected #RRGGBB.", http_status=400)
                 setattr(team, field, color)
                 updates.append(field)
-        # Fronts (deck) and back are picked independently, and both are a paid
-        # feature. Null resets to the default. Only what this team may actually
-        # play is accepted — never another team's custom deck or back.
-        if "deck_ids" in request.data or "card_back_id" in request.data:
-            if (err := paid_required(team)) is not None:
-                return err
+        # Fronts (decks) and back are picked independently, and picking is free: what
+        # a subscription buys is a *bigger catalogue* (extra decks, custom decks,
+        # uploaded backs), which available_decks/available_card_backs enforce — not
+        # the gesture of choosing. Only what this team may actually play is accepted,
+        # never another team's custom deck or back. Null resets to the default.
         if "deck_ids" in request.data:
             raw = request.data.get("deck_ids") or []
             if not isinstance(raw, list):
@@ -136,8 +135,8 @@ class TeamDetailView(APIView):
 class TeamDeckListView(APIView):
     """The decks this team may play with, and which one it currently plays.
 
-    ``can_create_custom`` tells the UI whether to offer deck creation: a custom
-    deck is a paid feature, so a free team sees the catalogue read-only.
+    Picking from the catalogue is free; ``can_customize`` tells the UI whether to
+    offer *extending* it (custom decks, uploaded backs), which a subscription buys.
     """
 
     permission_classes = [permissions.IsAuthenticated]

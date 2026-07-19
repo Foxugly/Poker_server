@@ -106,6 +106,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self._cancel_timeout(room.code)
             await self._broadcast("vote.wasReset", {"nextState": next_state})
             await self._broadcast_participation(room)
+        elif mtype == "reveal.setMode":
+            anonymous = await database_sync_to_async(services.set_reveal_mode)(
+                room, participant, payload.get("anonymous")
+            )
+            await self._broadcast("reveal.modeChanged", {"anonymous": anonymous})
         elif mtype == "deck.select":
             snapshot = await database_sync_to_async(services.select_deck)(room, participant, payload.get("deckId"))
             await self._broadcast("deck.changed", {"deckSnapshot": snapshot})
