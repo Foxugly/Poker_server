@@ -36,11 +36,42 @@ class VoteType(TranslatableModel):
         return self.code
 
 
+class CardBack(TranslatableModel):
+    """A card back, catalogued independently of the fronts.
+
+    A team picks its fronts (``Deck``) and its back separately, so any back can be
+    paired with any deck. ``Deck.card_back_image`` stays as the deck's own default,
+    used when a team hasn't picked a back.
+    """
+
+    team = models.ForeignKey(
+        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="card_backs"
+    )
+    is_standard = models.BooleanField(default=True)
+    image = models.ImageField(upload_to="decks/backs/")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    translations = TranslatedFields(
+        name=models.CharField(max_length=120),
+    )
+
+    def __str__(self):
+        for lang in ("en", "fr"):
+            name = self.safe_translation_getter("name", language_code=lang, any_language=False)
+            if name:
+                return name
+        return f"CardBack<{self.pk}>"
+
+
 class Deck(TranslatableModel):
-    """A set of cards for a vote type (spec §3.2). Phase 1: one standard deck.
-    (``team`` FK for custom decks is added additively in Phase 2.)"""
+    """A set of cards for a vote type (spec §3.2). A deck is either *standard*
+    (``team`` null, offered to every team) or a team's own custom deck."""
 
     vote_type = models.ForeignKey(VoteType, on_delete=models.PROTECT, related_name="decks")
+    team = models.ForeignKey(
+        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="decks"
+    )
     is_standard = models.BooleanField(default=True)
     card_back_image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)
@@ -51,6 +82,12 @@ class Deck(TranslatableModel):
     )
 
     def __str__(self):
+        # Admin label: the English name, else the French one, else a technical
+        # fallback — a deck with no translation at all must still be listable.
+        for lang in ("en", "fr"):
+            name = self.safe_translation_getter("name", language_code=lang, any_language=False)
+            if name:
+                return name
         return f"Deck<{self.pk}> ({self.vote_type_id})"
 
 
