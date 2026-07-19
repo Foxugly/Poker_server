@@ -3,10 +3,14 @@ name: Test & Deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+  # Keyed by ref so a PR's runs never queue behind (or cancel) a main deploy.
+  # Superseded PR runs are cancelled; main deploys always run to completion.
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
