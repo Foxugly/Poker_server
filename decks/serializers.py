@@ -63,7 +63,8 @@ class DeckSerializer(serializers.ModelSerializer):
         return _media_url(deck.card_back_image)
 
     def get_is_custom(self, deck) -> bool:
-        return deck.team_id is not None
+        # No per-entry ownership yet; returns True once user uploads land.
+        return False
 
 
 class CardBackSerializer(serializers.ModelSerializer):
@@ -78,7 +79,7 @@ class CardBackSerializer(serializers.ModelSerializer):
         return _media_url(back.image)
 
     def get_is_custom(self, back) -> bool:
-        return back.team_id is not None
+        return False
 
 
 class FeltSerializer(serializers.ModelSerializer):
@@ -93,4 +94,4 @@ class FeltSerializer(serializers.ModelSerializer):
         return _media_url(felt.image)
 
     def get_is_custom(self, felt) -> bool:
-        return felt.team_id is not None
+        return False
