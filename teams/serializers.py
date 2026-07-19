@@ -22,7 +22,7 @@ class TeamSerializer(serializers.ModelSerializer):
         model = Team
         fields = [
             "id", "name", "owner_email", "created_at", "my_role", "member_count",
-            "card_back_color", "felt_color", "is_paid", "billing_enabled",
+            "card_back_color", "felt_color", "deck_id", "card_back_id", "is_paid", "billing_enabled",
         ]
 
     def get_is_paid(self, team) -> bool:

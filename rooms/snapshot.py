@@ -30,7 +30,9 @@ def _layer_text(layer):
     return text
 
 
-def build_deck_snapshot(deck: Deck) -> dict:
+def build_deck_snapshot(deck: Deck, card_back=None) -> dict:
+    """``card_back`` overrides the deck's own back image (a team picks the two
+    independently); None keeps the deck's default."""
     vote_type = deck.vote_type
     cards = []
     for card in deck.cards.filter(is_active=True).prefetch_related("layers__translations").order_by("order"):
@@ -63,7 +65,7 @@ def build_deck_snapshot(deck: Deck) -> dict:
         "voteType": vote_type.code,
         "resolutionStrategy": vote_type.resolution_strategy,
         "deckId": deck.pk,
-        "cardBack": {"image": _media_url(deck.card_back_image)},
+        "cardBack": {"image": _media_url(card_back.image if card_back is not None else deck.card_back_image)},
         # Room theme (P2.6): default appearance; team rooms override from the team.
         "theme": {"cardBackColor": DEFAULT_CARD_BACK_COLOR, "feltColor": DEFAULT_FELT_COLOR},
         "cards": cards,

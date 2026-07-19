@@ -15,7 +15,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from config.api_errors import error_response
-from decks.models import Deck
+from decks.selection import DELEGATION_POKER_CODE, card_back_for_team, deck_for_team
 from teams.models import Team
 from teams.permissions import is_member
 
@@ -23,16 +23,6 @@ from .api_serializers import CreateRoomSerializer, JoinRoomSerializer
 from .codes import generate_token, generate_unique_code, normalize_code
 from .models import Participant, Role, Room
 from .snapshot import build_deck_snapshot
-
-DELEGATION_POKER_CODE = "delegation_poker"
-
-
-def _standard_deck():
-    return (
-        Deck.objects.filter(vote_type__code=DELEGATION_POKER_CODE, is_standard=True, is_active=True)
-        .select_related("vote_type")
-        .first()
-    )
 
 
 def _live_room_or_none(code):
@@ -56,10 +46,6 @@ class CreateRoomView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        deck = _standard_deck()
-        if deck is None:
-            return Response({"detail": "No standard deck configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-
         team = None
         user = None
         team_id = data.get("team")
@@ -76,7 +62,13 @@ class CreateRoomView(APIView):
             if not display_name:
                 return error_response(code="username_required", detail="A display name is required.", http_status=400)
 
-        snapshot = build_deck_snapshot(deck)
+        # The team's picked deck (falling back to the standard one); anonymous rooms
+        # always get the standard deck.
+        deck = deck_for_team(team)
+        if deck is None:
+            return Response({"detail": "No standard deck configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        snapshot = build_deck_snapshot(deck, card_back_for_team(team))
         if team is not None:
             # Apply the team's appearance customization (P2.6) to this room's snapshot.
             snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
