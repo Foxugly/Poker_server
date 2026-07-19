@@ -37,8 +37,11 @@ def client(owner):
     return c
 
 
-def _custom_deck(team, vote_type, name="Custom"):
-    deck = Deck.objects.create(vote_type=vote_type, team=team, is_standard=False, card_back_image="decks/backs/b.webp")
+def _paid_deck(vote_type, name="Fibonacci", free_tier=False):
+    """A catalogue deck reserved to paid teams (not in the free subset)."""
+    deck = Deck.objects.create(
+        vote_type=vote_type, is_standard=False, free_tier=free_tier, card_back_image="decks/backs/b.webp"
+    )
     deck.set_current_language("en")
     deck.name = name
     deck.save()
@@ -57,19 +60,18 @@ def test_catalogue_lists_standard_deck_and_defaults_to_it(client, team, standard
 
 
 @pytest.mark.django_db
-def test_catalogue_includes_own_custom_deck_but_not_another_teams(client, team, owner, standard_deck):
-    mine = _custom_deck(team, standard_deck.vote_type, "Mine")
-    other_team = Team.objects.create(name="Other", owner=_user("other@example.com"))
-    theirs = _custom_deck(other_team, standard_deck.vote_type, "Theirs")
+def test_a_team_sees_paid_only_decks_too(client, team, standard_deck):
+    """A team is always paid, so it sees the whole catalogue, free tier or not."""
+    paid = _paid_deck(standard_deck.vote_type, "Fibonacci")
 
     ids = [d["id"] for d in client.get(f"/api/teams/{team.pk}/decks/").json()["decks"]]
-    assert mine.pk in ids
-    assert theirs.pk not in ids
+    assert standard_deck.pk in ids
+    assert paid.pk in ids
 
 
 @pytest.mark.django_db
 def test_enable_several_decks_and_clear(client, team, standard_deck):
-    mine = _custom_deck(team, standard_deck.vote_type)
+    mine = _paid_deck(standard_deck.vote_type)
 
     resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [standard_deck.pk, mine.pk]}, format="json")
     assert resp.status_code == 200
@@ -83,11 +85,11 @@ def test_enable_several_decks_and_clear(client, team, standard_deck):
 
 
 @pytest.mark.django_db
-def test_cannot_pick_another_teams_deck(client, team, standard_deck):
-    other_team = Team.objects.create(name="Other", owner=_user("other@example.com"))
-    theirs = _custom_deck(other_team, standard_deck.vote_type)
+def test_cannot_enable_an_inactive_deck(client, team, standard_deck):
+    gone = _paid_deck(standard_deck.vote_type)
+    Deck.objects.filter(pk=gone.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [theirs.pk]}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [gone.pk]}, format="json")
     assert resp.status_code == 400
     assert resp.json()["code"] == "deck_unavailable"
     team.refresh_from_db()
@@ -103,7 +105,7 @@ def test_non_member_cannot_read_catalogue(team, standard_deck):
 
 @pytest.mark.django_db
 def test_room_freezes_every_enabled_deck(client, team, standard_deck):
-    mine = _custom_deck(team, standard_deck.vote_type)
+    mine = _paid_deck(standard_deck.vote_type)
     team.decks.set([mine.pk, standard_deck.pk])
 
     resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
@@ -117,7 +119,7 @@ def test_room_freezes_every_enabled_deck(client, team, standard_deck):
 @pytest.mark.django_db
 def test_deactivated_pick_falls_back_to_standard(team, standard_deck):
     """A stale pick must not break room creation — it silently falls back."""
-    mine = _custom_deck(team, standard_deck.vote_type)
+    mine = _paid_deck(standard_deck.vote_type)
     team.decks.set([mine.pk])
     Deck.objects.filter(pk=mine.pk).update(is_active=False)
 
@@ -128,7 +130,7 @@ def test_deactivated_pick_falls_back_to_standard(team, standard_deck):
 def test_untranslated_custom_deck_serializes_instead_of_500(client, team, standard_deck):
     """A deck with no row in the active language must degrade, not raise."""
     deck = Deck.objects.create(
-        vote_type=standard_deck.vote_type, team=team, is_standard=False, card_back_image="decks/backs/b.webp"
+        vote_type=standard_deck.vote_type, is_standard=False, card_back_image="decks/backs/b.webp"
     )
     deck.set_current_language("it")
     deck.name = "Mazzo"
@@ -145,45 +147,41 @@ def test_deck_str_prefers_english_then_french_then_technical(team, standard_deck
     """Admin label (decks/deck/ changelist)."""
     vt = standard_deck.vote_type
 
-    both = Deck.objects.create(vote_type=vt, team=team, card_back_image="b.webp")
+    both = Deck.objects.create(vote_type=vt, card_back_image="b.webp")
     both.set_current_language("fr"); both.name = "Jeu"; both.save()
     both.set_current_language("en"); both.name = "Deck"; both.save()
     assert str(both) == "Deck"
 
-    fr_only = Deck.objects.create(vote_type=vt, team=team, card_back_image="b.webp")
+    fr_only = Deck.objects.create(vote_type=vt, card_back_image="b.webp")
     fr_only.set_current_language("fr"); fr_only.name = "Jeu FR"; fr_only.save()
     assert str(fr_only) == "Jeu FR"
 
-    it_only = Deck.objects.create(vote_type=vt, team=team, card_back_image="b.webp")
+    it_only = Deck.objects.create(vote_type=vt, card_back_image="b.webp")
     it_only.set_current_language("it"); it_only.name = "Mazzo"; it_only.save()
     assert str(it_only) == f"Deck<{it_only.pk}> ({vt.pk})"
 
-    bare = Deck.objects.create(vote_type=vt, team=team, card_back_image="b.webp")
+    bare = Deck.objects.create(vote_type=vt, card_back_image="b.webp")
     assert str(bare) == f"Deck<{bare.pk}> ({vt.pk})"
 
 
-def _custom_back(team, name="Custom back"):
+def _extra_back(name="Blue", free_tier=True):
     return CardBack.objects.create(
-        team=team, is_standard=False, image="decks/backs/custom.webp", name=name
+        is_standard=False, free_tier=free_tier, image="decks/backs/custom.webp", name=name
     )
 
 
 @pytest.mark.django_db
-def test_catalogue_lists_card_backs_independently(client, team, standard_deck):
-    mine = _custom_back(team)
-    other = Team.objects.create(name="Other", owner=_user("other2@example.com"))
-    theirs = _custom_back(other, "Theirs")
-
+def test_catalogue_lists_card_backs(client, team, standard_deck):
+    mine = _extra_back()
     body = client.get(f"/api/teams/{team.pk}/decks/").json()
     ids = [b["id"] for b in body["card_backs"]]
     assert mine.pk in ids
-    assert theirs.pk not in ids
     assert body["selected_card_back_id"] is None
 
 
 @pytest.mark.django_db
 def test_back_and_deck_are_picked_independently(client, team, standard_deck):
-    back = _custom_back(team)
+    back = _extra_back()
     resp = client.patch(f"/api/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
@@ -193,20 +191,21 @@ def test_back_and_deck_are_picked_independently(client, team, standard_deck):
 
 
 @pytest.mark.django_db
-def test_cannot_pick_another_teams_card_back(client, team, standard_deck):
-    other = Team.objects.create(name="Other", owner=_user("other3@example.com"))
-    theirs = _custom_back(other)
+def test_cannot_pick_an_inactive_card_back(client, team, standard_deck):
+    back = _extra_back()
+    CardBack.objects.filter(pk=back.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"card_back_id": theirs.pk}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
     assert resp.status_code == 400
     assert resp.json()["code"] == "card_back_unavailable"
 
 
 @pytest.mark.django_db
 def test_room_snapshot_uses_the_picked_back_over_the_deck_default(client, team, standard_deck):
-    back = _custom_back(team)
+    back = _extra_back()
     team.card_back = back
-    team.save(update_fields=["card_back"])
+    team.card_back_style = "image"
+    team.save(update_fields=["card_back", "card_back_style"])
 
     resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
     assert resp.status_code == 201
@@ -222,7 +221,7 @@ def test_room_snapshot_falls_back_to_deck_default_back(client, team, standard_de
 
 @pytest.mark.django_db
 def test_deactivated_back_pick_falls_back(team, standard_deck):
-    back = _custom_back(team)
+    back = _extra_back()
     team.card_back = back
     team.save(update_fields=["card_back"])
     CardBack.objects.filter(pk=back.pk).update(is_active=False)
@@ -239,7 +238,7 @@ def test_seed_command_creates_the_back_on_a_preexisting_install(standard_deck):
     CardBack.objects.all().delete()
     call_command("seed_delegation_deck")
 
-    assert CardBack.objects.filter(is_standard=True, team__isnull=True).count() == 1
+    assert CardBack.objects.filter(is_standard=True).count() == 1
 
 
 @pytest.mark.django_db

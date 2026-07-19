@@ -41,18 +41,15 @@ class CardBack(models.Model):
 
     A team picks its fronts (``Deck``) and its back separately, so any back can be
     paired with any deck. ``Deck.card_back_image`` stays as the deck's own default,
-    used when a team hasn't picked a back.
+    used when a team hasn't picked a back. Visibility is by ``free_tier`` alone;
+    ownership of user-uploaded backs will be added with the upload feature.
 
     ``name`` is a plain field, NOT a parler one: it is a catalogue label ("Standard",
     "Blue"), not prose to translate — unlike deck names and card text layers.
     """
 
-    team = models.ForeignKey(
-        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="card_backs"
-    )
     is_standard = models.BooleanField(default=True)
-    # Included in the free offer. Distinct from is_standard, which says who OWNS a
-    # back (nobody vs a team): a common back can still be reserved to paid teams.
+    # Included in the free offer; reserved to paid teams when false.
     free_tier = models.BooleanField(default=True)
     name = models.CharField(max_length=120, blank=True, default="")
     image = models.ImageField(upload_to="decks/backs/")
@@ -65,11 +62,8 @@ class CardBack(models.Model):
 
 class Felt(models.Model):
     """A table felt, catalogued like card backs so a team can pick an image instead
-    of a flat colour. ``name`` is a plain label, not a parler field."""
+    of a flat colour. Visibility is by ``free_tier``; ``name`` is a plain label."""
 
-    team = models.ForeignKey(
-        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="felts"
-    )
     is_standard = models.BooleanField(default=True)
     free_tier = models.BooleanField(default=True)
     name = models.CharField(max_length=120, blank=True, default="")
@@ -82,16 +76,12 @@ class Felt(models.Model):
 
 
 class Deck(TranslatableModel):
-    """A set of cards for a vote type (spec §3.2). A deck is either *standard*
-    (``team`` null, offered to every team) or a team's own custom deck."""
+    """A set of cards for a vote type (spec §3.2). Every deck is a shared catalogue
+    entry; ``free_tier`` decides whether an account-less room may play it."""
 
     vote_type = models.ForeignKey(VoteType, on_delete=models.PROTECT, related_name="decks")
-    team = models.ForeignKey(
-        "teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_decks"
-    )
     is_standard = models.BooleanField(default=True)
-    # Included in the free offer. Distinct from is_standard, which says who OWNS a
-    # deck (nobody vs a team): a common deck can still be reserved to paid teams.
+    # Included in the free offer; reserved to paid teams when false.
     free_tier = models.BooleanField(default=True)
     card_back_image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)

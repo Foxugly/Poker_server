@@ -114,11 +114,11 @@ def test_an_unknown_style_is_rejected(client, team, standard_deck):
 
 
 @pytest.mark.django_db
-def test_another_teams_felt_cannot_be_picked(client, team, standard_deck):
-    other = Team.objects.create(name="Other", owner=User.objects.create_user(email="x@example.com", password="pw12345678"))
-    theirs = Felt.objects.create(team=other, is_standard=False, image="decks/felts/theirs.webp", name="Theirs")
+def test_an_inactive_felt_cannot_be_picked(client, team, standard_deck):
+    gone = Felt.objects.create(is_standard=False, image="decks/felts/gone.webp", name="Gone")
+    Felt.objects.filter(pk=gone.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"felt_id": theirs.pk}, format="json")
+    resp = client.patch(f"/api/teams/{team.pk}/", {"felt_id": gone.pk}, format="json")
 
     assert resp.status_code == 400
     assert resp.json()["code"] == "felt_unavailable"

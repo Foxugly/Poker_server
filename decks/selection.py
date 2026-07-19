@@ -4,31 +4,27 @@ Single source of truth shared by the teams API (the catalogue + the picker) and
 ``rooms`` (dealing a room). Keeping it here avoids the two drifting apart and a
 team being offered a deck that room creation then refuses.
 """
-from django.db.models import Q
-
 from .models import CardBack, Deck, Felt
 
 DELEGATION_POKER_CODE = "delegation_poker"
 
 
 def available_decks(team=None):
-    """Active decks the team may pick: every standard one, plus its own customs.
-
-    Anonymous rooms (``team=None``) only ever see the standard decks.
-    """
+    """Decks a room may play. An account-less room (``team=None``) sees the free
+    subset; a team (always paid) sees the whole catalogue."""
     qs = Deck.objects.filter(is_active=True).select_related("vote_type")
     if team is None:
-        # Account-less room: the free subset only.
-        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
-    return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
+        return qs.filter(free_tier=True).order_by("pk")
+    return qs.order_by("pk")
 
 
 def available_card_backs(team=None):
-    """Active card backs the team may pick: every standard one, plus its own."""
+    """Card backs a room may use: the free subset for an account-less room, the
+    whole catalogue for a team."""
     qs = CardBack.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
-    return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
+        return qs.filter(free_tier=True).order_by("pk")
+    return qs.order_by("pk")
 
 
 def free_decks_by_ids(deck_ids):
@@ -50,21 +46,19 @@ def free_card_back_by_id(card_back_id):
 
 
 def available_felts(team=None):
-    """Active felts the team may pick: every standard one, plus its own."""
+    """Felts a room may use: the free subset for an account-less room, the whole
+    catalogue for a team."""
     qs = Felt.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(team__isnull=True, is_standard=True, free_tier=True).order_by("pk")
-    return qs.filter(Q(team__isnull=True, is_standard=True) | Q(team=team)).order_by("-is_standard", "pk")
+        return qs.filter(free_tier=True).order_by("pk")
+    return qs.order_by("pk")
 
 
 def felt_for_team(team):
     """The team's picked felt, or None. A deactivated or reassigned pick falls back."""
     if team is None or team.felt_id is None:
         return None
-    felt = Felt.objects.filter(pk=team.felt_id, is_active=True).first()
-    if felt is not None and (felt.team_id is None or felt.team_id == team.pk):
-        return felt
-    return None
+    return Felt.objects.filter(pk=team.felt_id, is_active=True).first()
 
 
 def card_back_for_team(team):
@@ -75,10 +69,7 @@ def card_back_for_team(team):
     """
     if team is None or team.card_back_id is None:
         return None
-    back = CardBack.objects.filter(pk=team.card_back_id, is_active=True).first()
-    if back is not None and (back.team_id is None or back.team_id == team.pk):
-        return back
-    return None
+    return CardBack.objects.filter(pk=team.card_back_id, is_active=True).first()
 
 
 def standard_deck(vote_type_code: str = DELEGATION_POKER_CODE):
@@ -98,10 +89,7 @@ def decks_for_team(team):
     """
     if team is not None:
         enabled = list(
-            team.decks.filter(is_active=True)
-            .filter(Q(team__isnull=True, is_standard=True) | Q(team=team))
-            .select_related("vote_type")
-            .order_by("-is_standard", "pk")
+            team.decks.filter(is_active=True).select_related("vote_type").order_by("pk")
         )
         if enabled:
             return enabled

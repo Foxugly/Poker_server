@@ -19,11 +19,11 @@ LANG_ORDER = ("en", "fr", "nl", "it", "es")
 
 
 def create_standard_card_back():
-    """The standard back, catalogued separately so a team can pair any back with
-    any deck. Seeded on its own: an install predating CardBack already has the
-    deck, so seeding only inside create_standard_deck() would never reach it."""
+    """The standard back, catalogued separately so any back can be paired with any
+    deck. Seeded on its own: an install predating CardBack already has the deck, so
+    seeding only inside create_standard_deck() would never reach it."""
     back, created = CardBack.objects.get_or_create(
-        is_standard=True, team=None, defaults={"image": "decks/backs/back.webp", "name": "Standard"}
+        is_standard=True, name="Standard", defaults={"image": "decks/backs/back.webp"}
     )
     return back, created
 
