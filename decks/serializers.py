@@ -67,16 +67,12 @@ class DeckSerializer(serializers.ModelSerializer):
 
 
 class CardBackSerializer(serializers.ModelSerializer):
-    name = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     is_custom = serializers.SerializerMethodField()
 
     class Meta:
         model = CardBack
         fields = ["id", "name", "is_standard", "is_custom", "image"]
-
-    def get_name(self, back) -> str:
-        return _translated(back, "name")
 
     def get_image(self, back) -> str:
         return _media_url(back.image)

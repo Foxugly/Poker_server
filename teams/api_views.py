@@ -146,7 +146,7 @@ class TeamDeckListView(APIView):
         if not is_member(team, request.user):
             return error_response(code="not_a_member", detail="Not a member of this team.", http_status=403)
         decks = available_decks(team).prefetch_related("cards", "translations")
-        backs = available_card_backs(team).prefetch_related("translations")
+        backs = available_card_backs(team)
         return Response(
             {
                 "decks": DeckSerializer(decks, many=True).data,

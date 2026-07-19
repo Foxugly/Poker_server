@@ -23,12 +23,8 @@ def create_standard_card_back():
     any deck. Seeded on its own: an install predating CardBack already has the
     deck, so seeding only inside create_standard_deck() would never reach it."""
     back, created = CardBack.objects.get_or_create(
-        is_standard=True, team=None, defaults={"image": "decks/backs/back.webp"}
+        is_standard=True, team=None, defaults={"image": "decks/backs/back.webp", "name": "Standard"}
     )
-    if created:
-        back.set_current_language("en")
-        back.name = "Standard"
-        back.save()
     return back, created
 
 

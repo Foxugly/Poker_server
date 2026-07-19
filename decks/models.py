@@ -36,12 +36,15 @@ class VoteType(TranslatableModel):
         return self.code
 
 
-class CardBack(TranslatableModel):
+class CardBack(models.Model):
     """A card back, catalogued independently of the fronts.
 
     A team picks its fronts (``Deck``) and its back separately, so any back can be
     paired with any deck. ``Deck.card_back_image`` stays as the deck's own default,
     used when a team hasn't picked a back.
+
+    ``name`` is a plain field, NOT a parler one: it is a catalogue label ("Standard",
+    "Blue"), not prose to translate — unlike deck names and card text layers.
     """
 
     team = models.ForeignKey(
@@ -51,20 +54,13 @@ class CardBack(TranslatableModel):
     # Included in the free offer. Distinct from is_standard, which says who OWNS a
     # back (nobody vs a team): a common back can still be reserved to paid teams.
     free_tier = models.BooleanField(default=True)
+    name = models.CharField(max_length=120, blank=True, default="")
     image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    translations = TranslatedFields(
-        name=models.CharField(max_length=120),
-    )
-
     def __str__(self):
-        for lang in ("en", "fr"):
-            name = self.safe_translation_getter("name", language_code=lang, any_language=False)
-            if name:
-                return name
-        return f"CardBack<{self.pk}>"
+        return self.name or f"CardBack<{self.pk}>"
 
 
 class Deck(TranslatableModel):
