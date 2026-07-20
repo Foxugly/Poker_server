@@ -79,7 +79,7 @@ class CardBackSerializer(serializers.ModelSerializer):
         return _media_url(back.image)
 
     def get_is_custom(self, back) -> bool:
-        return False
+        return back.uploaded_by_id is not None
 
 
 class FeltSerializer(serializers.ModelSerializer):
@@ -94,4 +94,4 @@ class FeltSerializer(serializers.ModelSerializer):
         return _media_url(felt.image)
 
     def get_is_custom(self, felt) -> bool:
-        return False
+        return felt.uploaded_by_id is not None

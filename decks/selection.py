@@ -4,9 +4,35 @@ Single source of truth shared by the teams API (the catalogue + the picker) and
 ``rooms`` (dealing a room). Keeping it here avoids the two drifting apart and a
 team being offered a deck that room creation then refuses.
 """
+from django.db.models import Q
+
 from .models import CardBack, Deck, Felt
 
 DELEGATION_POKER_CODE = "delegation_poker"
+
+
+def squad_of(owner):
+    """The set of user ids whose uploads a team of this ``owner`` may see:
+    the owner, plus every manager of a team the owner owns (owner+managers, not
+    plain members). An upload is visible wherever its author sits in a squad."""
+    from teams.models import Team, TeamMembership, TeamRole
+
+    team_ids = Team.objects.filter(owner=owner).values_list("pk", flat=True)
+    manager_ids = TeamMembership.objects.filter(
+        team_id__in=team_ids, role=TeamRole.MANAGER
+    ).values_list("user_id", flat=True)
+    return {owner.pk, *manager_ids}
+
+
+def can_upload(user) -> bool:
+    """A user may upload iff they belong to at least one squad — i.e. they own or
+    manage a team (plain members can't). Teams require a paid owner, so this
+    implicitly gates on a paid squad."""
+    from teams.models import TeamMembership, TeamRole
+
+    return TeamMembership.objects.filter(
+        user=user, role__in=(TeamRole.OWNER, TeamRole.MANAGER)
+    ).exists()
 
 
 def available_decks(team=None):
@@ -19,12 +45,13 @@ def available_decks(team=None):
 
 
 def available_card_backs(team=None):
-    """Card backs a room may use: the free subset for an account-less room, the
-    whole catalogue for a team."""
+    """Card backs a room may use: built-in ones (per free_tier for an account-less
+    room; all of them for a team) plus the team squad's custom uploads."""
     qs = CardBack.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(free_tier=True).order_by("pk")
-    return qs.order_by("pk")
+        return qs.filter(is_standard=True, free_tier=True).order_by("pk")
+    squad = squad_of(team.owner)
+    return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
 
 
 def free_decks_by_ids(deck_ids):
@@ -46,12 +73,12 @@ def free_card_back_by_id(card_back_id):
 
 
 def available_felts(team=None):
-    """Felts a room may use: the free subset for an account-less room, the whole
-    catalogue for a team."""
+    """Felts a room may use: built-in ones plus the team squad's custom uploads."""
     qs = Felt.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(free_tier=True).order_by("pk")
-    return qs.order_by("pk")
+        return qs.filter(is_standard=True, free_tier=True).order_by("pk")
+    squad = squad_of(team.owner)
+    return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
 
 
 def felt_for_team(team):

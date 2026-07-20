@@ -165,8 +165,9 @@ def test_deck_str_prefers_english_then_french_then_technical(team, standard_deck
 
 
 def _extra_back(name="Blue", free_tier=True):
+    """A built-in catalogue back (visible to any team)."""
     return CardBack.objects.create(
-        is_standard=False, free_tier=free_tier, image="decks/backs/custom.webp", name=name
+        is_standard=True, free_tier=free_tier, image="decks/backs/custom.webp", name=name
     )
 
 

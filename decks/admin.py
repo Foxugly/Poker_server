@@ -30,11 +30,11 @@ class DeckAdmin(TranslatableAdmin):
 
 @admin.register(CardBack)
 class CardBackAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "is_standard", "free_tier", "is_active")
+    list_display = ("__str__", "is_standard", "free_tier", "uploaded_by", "is_active")
     list_filter = ("is_standard", "free_tier", "is_active")
 
 
 @admin.register(Felt)
 class FeltAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "is_standard", "free_tier", "is_active")
+    list_display = ("__str__", "is_standard", "free_tier", "uploaded_by", "is_active")
     list_filter = ("is_standard", "free_tier", "is_active")
