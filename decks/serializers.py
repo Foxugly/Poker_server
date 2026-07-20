@@ -4,11 +4,9 @@ rooms are dealt from. Rooms never read these serializers — they freeze an immu
 """
 from rest_framework import serializers
 
+from config.media import absolute_media_url as _media_url
+
 from .models import Card, CardBack, Deck, Felt
-
-
-def _media_url(image) -> str:
-    return image.url if image else ""
 
 
 class DeckCardPreviewSerializer(serializers.ModelSerializer):

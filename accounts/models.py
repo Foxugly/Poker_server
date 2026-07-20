@@ -52,6 +52,8 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=50, blank=True)
     # Email ownership gate (Phase 2 auth). Present now so the shape matches the fleet.
     email_confirmed = models.BooleanField(default=False)
+    # Optional profile picture; falls back to deterministic initials in the UI.
+    avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)
     # Accès offert : accorde tous les droits payants sans souscription Stripe
     # (spec lot A). Distinct de is_staff, qui n'accorde AUCUN droit métier.
     # Lu et court-circuité dans billing/service.py (user_is_paid() / user_quota()),

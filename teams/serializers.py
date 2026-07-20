@@ -9,6 +9,12 @@ class MemberUserSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     email = serializers.EmailField()
     display_name = serializers.CharField()
+    avatar_url = serializers.SerializerMethodField()
+
+    def get_avatar_url(self, user) -> str:
+        from config.media import absolute_media_url
+
+        return absolute_media_url(getattr(user, "avatar", None))
 
 
 class TeamSerializer(serializers.ModelSerializer):
