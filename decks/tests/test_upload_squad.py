@@ -130,8 +130,9 @@ def test_a_strangers_upload_is_not_visible(team):
 
 @pytest.mark.django_db
 def test_builtins_stay_visible_to_everyone(team, standard_deck):
-    # The seeded standard back (is_standard=True) shows regardless of squad.
-    assert CardBack.objects.filter(is_standard=True).first().pk in [b.pk for b in available_card_backs(team)]
+    # A built-in back (is_standard=True, no uploader) shows regardless of squad.
+    builtin = CardBack.objects.create(is_standard=True, name="House", image="decks/backs/house.png")
+    assert builtin.pk in [b.pk for b in available_card_backs(team)]
 
 
 # --- validation ----------------------------------------------------------------
