@@ -231,15 +231,15 @@ def test_deactivated_back_pick_falls_back(team, standard_deck):
 
 
 @pytest.mark.django_db
-def test_seed_command_creates_the_back_on_a_preexisting_install(standard_deck):
-    """An install predating CardBack has the deck already; the command must still
-    seed the back rather than short-circuit on the deck's existence."""
+def test_seed_does_not_create_a_placeholder_card_back(standard_deck):
+    """The seed no longer ships a "Standard" card back pointing at a missing image;
+    built-in backs are uploaded through the admin instead."""
     from django.core.management import call_command
 
     CardBack.objects.all().delete()
     call_command("seed_delegation_deck")
 
-    assert CardBack.objects.filter(is_standard=True).count() == 1
+    assert CardBack.objects.count() == 0
 
 
 @pytest.mark.django_db

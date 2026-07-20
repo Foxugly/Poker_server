@@ -4,7 +4,7 @@ Used by tests and by the ``seed_delegation_deck`` management command. Image fiel
 set to placeholder names by default — the original illustrations are a non-technical
 content dependency (scope §10); the code is ready before the artwork exists.
 """
-from decks.models import Card, CardBack, Deck, TextLayer, TextLayerKind, VoteType
+from decks.models import Card, Deck, TextLayer, TextLayerKind, VoteType
 
 LEVELS = [
     ("1", "tell", "Tell", "Dire", "Vertellen", "Dire", "Decir"),
@@ -16,16 +16,6 @@ LEVELS = [
     ("7", "delegate", "Delegate", "Déléguer", "Delegeren", "Delegare", "Delegar"),
 ]
 LANG_ORDER = ("en", "fr", "nl", "it", "es")
-
-
-def create_standard_card_back():
-    """The standard back, catalogued separately so any back can be paired with any
-    deck. Seeded on its own: an install predating CardBack already has the deck, so
-    seeding only inside create_standard_deck() would never reach it."""
-    back, created = CardBack.objects.get_or_create(
-        is_standard=True, name="Standard", defaults={"image": "decks/backs/back.webp"}
-    )
-    return back, created
 
 
 def create_standard_deck():
@@ -42,8 +32,6 @@ def create_standard_deck():
     deck.set_current_language("en")
     deck.name = "Delegation Poker"
     deck.save()
-
-    create_standard_card_back()
 
     for value, slug, *names in LEVELS:
         card = Card.objects.create(
