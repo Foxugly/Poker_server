@@ -4,6 +4,7 @@ keyed by language_code ("langue = donnée", scope §10) — never label_fr colum
 At room creation the referential is frozen into an immutable JSON ``deck_snapshot``
 (spec §4); the realtime layer never reads these tables.
 """
+from django.conf import settings
 from django.db import models
 from parler.models import TranslatableModel, TranslatedFields
 
@@ -41,16 +42,25 @@ class CardBack(models.Model):
 
     A team picks its fronts (``Deck``) and its back separately, so any back can be
     paired with any deck. ``Deck.card_back_image`` stays as the deck's own default,
-    used when a team hasn't picked a back. Visibility is by ``free_tier`` alone;
-    ownership of user-uploaded backs will be added with the upload feature.
+    used when a team hasn't picked a back. A built-in back is visible per ``free_tier``;
+    a custom (uploaded) back is visible to its uploader's squad (see decks.selection).
 
     ``name`` is a plain field, NOT a parler one: it is a catalogue label ("Standard",
     "Blue"), not prose to translate — unlike deck names and card text layers.
     """
 
+    # is_standard is the *built-in vs custom* discriminator: True = shipped
+    # catalogue, False = a squad member's upload. NOT uploaded_by-is-null, so that
+    # an orphaned upload (uploader deleted → uploaded_by null) stays custom/hidden
+    # rather than turning into a global built-in.
     is_standard = models.BooleanField(default=True)
     # Included in the free offer; reserved to paid teams when false.
     free_tier = models.BooleanField(default=True)
+    # The user who uploaded a custom entry (null for built-ins). Visibility flows
+    # through the uploader's "squad" — see decks.selection.
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     name = models.CharField(max_length=120, blank=True, default="")
     image = models.ImageField(upload_to="decks/backs/")
     is_active = models.BooleanField(default=True)
@@ -64,8 +74,11 @@ class Felt(models.Model):
     """A table felt, catalogued like card backs so a team can pick an image instead
     of a flat colour. Visibility is by ``free_tier``; ``name`` is a plain label."""
 
-    is_standard = models.BooleanField(default=True)
+    is_standard = models.BooleanField(default=True)  # built-in vs upload — see CardBack
     free_tier = models.BooleanField(default=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     name = models.CharField(max_length=120, blank=True, default="")
     image = models.ImageField(upload_to="decks/felts/")
     is_active = models.BooleanField(default=True)
