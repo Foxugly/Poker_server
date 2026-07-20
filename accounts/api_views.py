@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions, status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -213,6 +214,32 @@ class MeApiView(APIView):
         serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(UserMeSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
+class MeAvatarApiView(APIView):
+    """Upload or clear the signed-in user's avatar."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        from decks.validators import validate_image_upload
+
+        image = request.FILES.get("image")
+        try:
+            validate_image_upload(image)
+        except DjangoValidationError as e:
+            return error_response(code="invalid_image", detail="; ".join(e.messages), http_status=400)
+        request.user.avatar = image
+        request.user.save(update_fields=["avatar"])
+        return Response(UserMeSerializer(request.user).data, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        if request.user.avatar:
+            request.user.avatar.delete(save=False)
+            request.user.avatar = None
+            request.user.save(update_fields=["avatar"])
         return Response(UserMeSerializer(request.user).data, status=status.HTTP_200_OK)
 
 

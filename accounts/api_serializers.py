@@ -82,6 +82,13 @@ class MagicLinkVerifySerializer(serializers.Serializer):
 
 
 class UserMeSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
+    def get_avatar_url(self, user) -> str:
+        from config.media import absolute_media_url
+
+        return absolute_media_url(user.avatar)
+
     class Meta:
         model = User
         # is_staff/is_superuser read-only so the SPA can gate an admin link client-side.
@@ -92,7 +99,7 @@ class UserMeSerializer(serializers.ModelSerializer):
         # read_only_fields here is defense in depth, protecting only if this
         # serializer is ever repurposed for writes.
         fields = [
-            "id", "email", "display_name", "is_active", "email_confirmed",
+            "id", "email", "display_name", "avatar_url", "is_active", "email_confirmed",
             "is_staff", "is_superuser", "subscription_bypass",
         ]
         read_only_fields = [
