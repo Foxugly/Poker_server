@@ -83,6 +83,30 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self._broadcast("vote.wasReset", {"nextState": "idle"})
             await self._broadcast("subject.updated", {"text": text})
             await self._broadcast_agenda(room)
+        elif mtype == "round.prepare":
+            summary = await database_sync_to_async(services.prepare_round)(
+                room,
+                participant,
+                subject_id=payload.get("subjectId"),
+                subject_text=payload.get("subjectText"),
+                anonymous=payload.get("anonymous"),
+                deck_id=payload.get("deckId"),
+                timer_enabled=payload.get("timerEnabled"),
+                timer_seconds=payload.get("timerSeconds"),
+            )
+            # Announce the composed round to everyone; each is an event the client
+            # already applies, so no new client handler is needed.
+            self._cancel_timeout(room.code)
+            await self._broadcast("vote.wasReset", {"nextState": "idle"})
+            await self._broadcast("subject.updated", {"text": summary["subject"]})
+            await self._broadcast_agenda(room)
+            await self._broadcast("deck.changed", {"deckSnapshot": summary["deckSnapshot"]})
+            await self._broadcast("reveal.modeChanged", {"anonymous": summary["anonymous"]})
+            await self._broadcast(
+                "timer.changed",
+                {"enabled": summary["timerEnabled"], "seconds": summary["timerSeconds"]},
+            )
+            await self._broadcast_participation(room)
         elif mtype == "vote.open":
             deadline = await database_sync_to_async(services.open_vote)(room, participant)
             deadline_iso = await database_sync_to_async(services.deadline_iso)(room)

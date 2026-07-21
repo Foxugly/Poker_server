@@ -188,6 +188,62 @@ def set_timer(room, participant, enabled, seconds):
     return {"enabled": room.timer_enabled, "seconds": room.timer_seconds}
 
 
+def prepare_round(
+    room,
+    participant,
+    *,
+    subject_id=None,
+    subject_text=None,
+    anonymous=None,
+    deck_id=None,
+    timer_enabled=None,
+    timer_seconds=None,
+):
+    """Step 1 of the two-step round flow: compose and announce the next round in one
+    atomic call — pick/set the subject, the deck, the reveal mode and the timer — but
+    leave it IDLE (not open). Opening is a separate step (``open_vote``).
+
+    Doing it atomically is what lets the facilitator manipulate the panel as a *form*
+    (subject + details) and commit it in one go: every setting is applied while the
+    session provably exists and is idle, so none of them can race or reject (that's
+    what used to make toggling the reveal mode before any subject existed pop an
+    error). Reuses the single-setting services so the rules stay in one place.
+    """
+    _require_facilitator(room, participant, "round.prepare")
+    # 1) Make the chosen subject the current one (creating/resetting its session).
+    if subject_id is not None:
+        select_subject(room, participant, subject_id)
+    elif subject_text is not None and subject_text.strip():
+        set_subject(room, participant, subject_text.strip())
+    session = _current_session(room)
+    if session is None or not session.subject.text.strip():
+        raise RoomError("state.invalid_transition", "No subject set", "round.prepare")
+    if session.state != RoundState.IDLE:
+        raise RoomError("state.invalid_transition", "Round already started", "round.prepare")
+    # 2) Details. Each helper re-checks facilitator/state; order is irrelevant now
+    #    that the idle session exists.
+    if deck_id is not None:
+        select_deck(room, participant, deck_id)
+    if anonymous is not None:
+        set_reveal_mode(room, participant, anonymous)
+    if timer_enabled is not None or timer_seconds is not None:
+        set_timer(
+            room,
+            participant,
+            room.timer_enabled if timer_enabled is None else timer_enabled,
+            room.timer_seconds if timer_seconds is None else timer_seconds,
+        )
+    room.refresh_from_db(fields=["deck_snapshot", "timer_enabled", "timer_seconds"])
+    session.refresh_from_db(fields=["is_anonymous"])
+    return {
+        "subject": session.subject.text,
+        "deckSnapshot": active_deck_snapshot(room),
+        "anonymous": bool(session.is_anonymous),
+        "timerEnabled": room.timer_enabled,
+        "timerSeconds": room.timer_seconds,
+    }
+
+
 def open_vote(room, participant):
     _require_facilitator(room, participant, "vote.open")
     session = _current_session(room)
