@@ -30,12 +30,23 @@ def _role_of(token):
     return Participant.objects.get(token=token).role
 
 
-def _make_room():
+def _make_room(with_team=False):
     deck = create_standard_deck()
     # Unique code per test: the process-global InMemoryChannelLayer keys groups by
     # code, so a shared code would leak group state across transactional tests.
     code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
-    room = Room(code=code, vote_type=deck.vote_type, deck_snapshot=build_deck_snapshot(deck), title="Retro")
+    team = None
+    if with_team:
+        # The timer is a team-only feature; timer tests need a team room.
+        from django.contrib.auth import get_user_model
+        from teams.models import Team, TeamMembership, TeamRole
+
+        owner = get_user_model().objects.create_user(
+            email=f"owner-{code.lower()}@example.com", password="pw12345678", display_name="O"
+        )
+        team = Team.objects.create(name=f"T-{code}", owner=owner)
+        TeamMembership.objects.create(team=team, user=owner, role=TeamRole.OWNER)
+    room = Room(code=code, vote_type=deck.vote_type, deck_snapshot=build_deck_snapshot(deck), title="Retro", team=team)
     room.touch(save=False)
     room.save()
     fac = Participant.objects.create(room=room, token=generate_token(), display_name="Sam", role=Role.FACILITATOR)
@@ -225,7 +236,7 @@ async def test_timeout_reveals_on_reconnect_reconciliation():
     """The scheduled asyncio task is best-effort; the deadline in DB is authoritative.
     Simulate a lost/expired task (e.g. service restart) by backdating vote_deadline
     directly, then verify a reconnect triggers _reconcile_timeout and reveals."""
-    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)(True)
     fac, _ = await _join(fac_token, code)
     voter, _ = await _join(voter_token, code)
     await _drain_until(fac, "participant.joined")
@@ -268,7 +279,7 @@ async def test_scheduled_timeout_reveals_without_reconnect(monkeypatch):
     Deterministic and fast: TIMER_MIN_SECONDS is patched to 0 so the deadline is
     effectively immediate, no reliance on real-time sleep."""
     monkeypatch.setattr(services, "TIMER_MIN_SECONDS", 0)
-    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)(True)
     fac, _ = await _join(fac_token, code)
     voter, _ = await _join(voter_token, code)
     await _drain_until(fac, "participant.joined")
@@ -312,7 +323,7 @@ async def test_timer_task_dict_survives_cancellation_races(monkeypatch):
     (no real time) to actually deliver the CancelledError into each task's `finally`.
     """
     monkeypatch.setattr(services, "TIMER_MIN_SECONDS", 0)
-    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)(True)
     fac, _ = await _join(fac_token, code)
     voter, _ = await _join(voter_token, code)
     await _drain_until(fac, "participant.joined")
@@ -419,7 +430,7 @@ async def test_timer_resumes_on_reconnect_after_restart(monkeypatch):
     case, just with a positive delta) -- only the final "does it actually fire"
     step below waits any real (sub-second) time."""
     monkeypatch.setattr(services, "TIMER_MIN_SECONDS", 0)
-    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)(True)
     fac, _ = await _join(fac_token, code)
     voter, _ = await _join(voter_token, code)
     await _drain_until(fac, "participant.joined")
@@ -489,7 +500,7 @@ async def test_reconnect_does_not_duplicate_tracked_timer_task():
     _timer_tasks` guard in `_resume_timeout`, four clients reconnecting in a
     burst would each cancel-and-recreate the task, discarding the delay computed
     at the original schedule and risking a cancel racing a legitimate fire."""
-    code, fac_token, voter_token = await database_sync_to_async(_make_room)()
+    code, fac_token, voter_token = await database_sync_to_async(_make_room)(True)
     fac, _ = await _join(fac_token, code)
     voter, _ = await _join(voter_token, code)
     await _drain_until(fac, "participant.joined")

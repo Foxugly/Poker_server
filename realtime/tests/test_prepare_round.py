@@ -42,19 +42,30 @@ def paid_team(db):
 
 
 @pytest.mark.django_db
-def test_prepare_from_scratch_creates_idle_round_with_details(db):
+def test_prepare_from_scratch_creates_idle_round(db):
     room, fac, _ = _fresh_room()
     summary = services.prepare_round(
         room, fac, subject_text="Deploys", timer_enabled=True, timer_seconds=30
     )
 
     assert summary["subject"] == "Deploys"
-    assert summary["timerEnabled"] is True
-    assert summary["timerSeconds"] == 30
+    # The timer is a TEAM feature: on an anonymous room the fields are silently
+    # ignored (a stale client must still be able to prepare its round).
+    assert summary["timerEnabled"] is False
     assert summary["anonymous"] is False
     session = services._current_session(room)
     assert session is not None
     assert session.state == RoundState.IDLE  # prepared, NOT open
+
+
+@pytest.mark.django_db
+def test_prepare_applies_the_timer_on_a_team_room(paid_team):
+    room, fac, _ = _fresh_room(team=paid_team)
+    summary = services.prepare_round(
+        room, fac, subject_text="Deploys", timer_enabled=True, timer_seconds=30
+    )
+    assert summary["timerEnabled"] is True
+    assert summary["timerSeconds"] == 30
 
 
 @pytest.mark.django_db
