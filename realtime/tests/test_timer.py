@@ -1,7 +1,12 @@
-"""Timer de round : reglage facilitateur, echeance posee a l'ouverture, votes tardifs refuses."""
+"""Timer de round : reglage facilitateur, echeance posee a l'ouverture, votes tardifs refuses.
+
+Le timer est une feature d'EQUIPE : la fixture porte donc une team ; une salle
+anonyme se voit refuser le reglage (test dedie).
+"""
 import json
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from realtime import services
@@ -9,17 +14,17 @@ from realtime.services import RoomError
 from rooms.codes import generate_token, generate_unique_code
 from rooms.models import Participant, Role, Room, RoundState
 from rooms.snapshot import build_deck_snapshot
+from teams.models import Team, TeamMembership, TeamRole
 
 
-@pytest.fixture
-def room_with_facilitator(standard_deck):
-    """A room with a facilitator and a voter participant, mirroring test_consumer._make_room."""
+def _make_room(standard_deck, team=None):
     code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())
     room = Room(
         code=code,
         vote_type=standard_deck.vote_type,
         deck_snapshot=build_deck_snapshot(standard_deck),
         title="Retro",
+        team=team,
     )
     room.touch(save=False)
     room.save()
@@ -30,6 +35,17 @@ def room_with_facilitator(standard_deck):
         room=room, token=generate_token(), display_name="Alex", role=Role.VOTER
     )
     return room, facilitator, voter
+
+
+@pytest.fixture
+def room_with_facilitator(standard_deck, db):
+    """A TEAM room with a facilitator and a voter (the timer is a team feature)."""
+    owner = get_user_model().objects.create_user(
+        email="timer-owner@example.com", password="pw12345678", display_name="O"
+    )
+    team = Team.objects.create(name="TimerTeam", owner=owner)
+    TeamMembership.objects.create(team=team, user=owner, role=TeamRole.OWNER)
+    return _make_room(standard_deck, team=team)
 
 
 @pytest.mark.django_db
@@ -43,6 +59,15 @@ def test_set_timer_requires_facilitator(room_with_facilitator):
     room, _, voter = room_with_facilitator
     with pytest.raises(RoomError):
         services.set_timer(room, voter, True, 30)
+
+
+@pytest.mark.django_db
+def test_set_timer_is_refused_on_an_anonymous_room(standard_deck):
+    """Une salle sans equipe n'a pas de timer (feature payante/equipe)."""
+    room, facilitator, _ = _make_room(standard_deck, team=None)
+    with pytest.raises(RoomError) as exc:
+        services.set_timer(room, facilitator, True, 30)
+    assert exc.value.code == "forbidden.subscription_required"
 
 
 @pytest.mark.django_db

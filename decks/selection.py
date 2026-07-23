@@ -45,25 +45,30 @@ def available_decks(team=None):
 
 
 def available_card_backs(team=None):
-    """Card backs a room may use: built-in ones (per free_tier for an account-less
-    room; all of them for a team) plus the team squad's custom uploads."""
+    """Card backs a room may use: for an account-less room, whatever is flagged
+    free_tier + active (same admin-drivable rule as decks — is_standard is NOT
+    required, so a custom back can be promoted to the free offer); for a team,
+    every built-in plus the squad's custom uploads."""
     qs = CardBack.objects.filter(is_active=True)
     if team is None:
-        return qs.filter(is_standard=True, free_tier=True).order_by("pk")
+        return qs.filter(free_tier=True).order_by("pk")
     squad = squad_of(team.owner)
     return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
 
 
 def free_decks_by_ids(deck_ids):
-    """The free decks matching these ids, in catalogue order.
+    """Every free deck, with the caller's pick (if any) first.
 
-    Silently drops anything not in the free catalogue rather than erroring: the
-    ids come from a public, unauthenticated payload.
+    An account-less room always carries the WHOLE free catalogue — the facilitator
+    may switch poker type round by round in-room — so the home-page pick only
+    chooses the STARTING type (the first snapshot becomes the active deck).
+    Unknown ids are silently ignored: they come from a public payload.
     """
     catalogue = list(available_decks(None))
     wanted = set(deck_ids or [])
     chosen = [d for d in catalogue if d.pk in wanted]
-    return chosen or catalogue[:1]
+    rest = [d for d in catalogue if d.pk not in wanted]
+    return chosen + rest
 
 
 def free_card_back_by_id(card_back_id):

@@ -173,8 +173,13 @@ def select_subject(room, participant, subject_id):
 def set_timer(room, participant, enabled, seconds):
     """Reglage du timer par le facilitateur. La duree est normalisee cote serveur
     (arrondi au multiple de 5 le plus proche, puis bornage 10-60) : un client
-    modifie ne peut imposer ni 0 s, ni une valeur absurde, ni un pas hors grille."""
+    modifie ne peut imposer ni 0 s, ni une valeur absurde, ni un pas hors grille.
+
+    Feature d'equipe uniquement : une salle anonyme n'a pas de timer (le panneau
+    ne l'affiche pas ; un client modifie se voit refuser)."""
     _require_facilitator(room, participant, "timer.set")
+    if room.team_id is None:
+        raise RoomError("forbidden.subscription_required", "Timer requires a team room", "timer.set")
     try:
         seconds = int(seconds)
     except (TypeError, ValueError):
@@ -226,7 +231,9 @@ def prepare_round(
         select_deck(room, participant, deck_id)
     if anonymous is not None:
         set_reveal_mode(room, participant, anonymous)
-    if timer_enabled is not None or timer_seconds is not None:
+    # Timer: team-only feature. Silently ignored (not refused) for an anonymous
+    # room so a stale client sending timer fields can still prepare its round.
+    if room.team_id is not None and (timer_enabled is not None or timer_seconds is not None):
         set_timer(
             room,
             participant,
@@ -589,7 +596,9 @@ def build_state_sync(participant):
             result = session.result.chosen_value
 
     payload = {
-        "room": {"code": room.code, "title": room.title},
+        # isTeam drives client-side feature gating (e.g. the timer control is
+        # team-only); the server stays authoritative either way.
+        "room": {"code": room.code, "title": room.title, "isTeam": room.team_id is not None},
         "protocolVersion": 1,
         "roundState": round_state,
         "subject": subject_text,

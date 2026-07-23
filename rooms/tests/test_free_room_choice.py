@@ -41,17 +41,21 @@ def test_catalogue_is_public_and_lists_only_the_free_subset(client, standard_dec
 
 
 @pytest.mark.django_db
-def test_room_freezes_the_picked_free_decks(client, standard_deck):
+def test_room_always_carries_the_whole_free_catalogue(client, standard_deck):
+    """The pick only chooses the STARTING type; the facilitator can switch to any
+    free deck in-room, so they are all frozen into the room."""
     extra = _extra_deck(standard_deck.vote_type, free_tier=True)
 
     resp = client.post(
         "/api/rooms",
-        {"title": "Retro", "username": "Alex", "deck_ids": [standard_deck.pk, extra.pk]},
+        {"title": "Retro", "username": "Alex", "deck_ids": [extra.pk]},
         format="json",
     )
 
     assert resp.status_code == 201
-    assert {d["deckId"] for d in resp.json()["availableDecks"]} == {standard_deck.pk, extra.pk}
+    body = resp.json()
+    assert {d["deckId"] for d in body["availableDecks"]} == {standard_deck.pk, extra.pk}
+    assert body["deckSnapshot"]["deckId"] == extra.pk  # the pick is the active deck
 
 
 @pytest.mark.django_db
@@ -105,3 +109,16 @@ def test_a_paid_only_card_back_is_ignored(client, standard_deck):
 
     assert resp.status_code == 201
     assert resp.json()["deckSnapshot"]["cardBack"]["image"].endswith("back.webp")  # deck default
+
+
+@pytest.mark.django_db
+def test_a_free_tier_custom_back_is_offered(client, standard_deck):
+    """Same admin-drivable rule as decks: free_tier + active is enough — a custom
+    (non-standard) back can be promoted into the free offer."""
+    back = CardBack.objects.create(
+        is_standard=False, free_tier=True, image="decks/backs/custom.webp", name="Custom free"
+    )
+
+    resp = client.get("/api/decks/catalogue/")
+
+    assert back.pk in [b["id"] for b in resp.json()["card_backs"]]
