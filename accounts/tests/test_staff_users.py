@@ -1,6 +1,7 @@
 """Endpoints staff d'administration du flag subscription_bypass (spec lot A §A.4).
 
-- Lecture et mutation réservées à is_staff (IsAdminUser).
+- Lecture et mutation réservées aux superusers : `is_staff` ouvre la zone
+  d'administration, offrir un accès gratuit engage de l'argent.
 - L'activation horodate bypass_granted_at ; la désactivation le laisse en place.
 """
 import pytest
@@ -18,7 +19,7 @@ def _client(user):
 
 @pytest.fixture
 def staff(db):
-    return User.objects.create_user(email="staff@example.com", password="pw12345678", is_staff=True)
+    return User.objects.create_superuser(email="staff@example.com", password="pw12345678")
 
 
 @pytest.fixture
@@ -133,3 +134,22 @@ def test_log_survives_target_deletion(staff, member):
     member.delete()
     row = BypassGrantLog.objects.get()
     assert row.target_id is None and row.target_label == "member@example.com"
+
+
+@pytest.mark.django_db
+def test_a_plain_staff_account_cannot_grant_free_access(db, member):
+    """La garde Angular exige `is_superuser` depuis toujours ; le serveur se
+    contentait de `is_staff`. Les deux bouts disaient deux choses differentes,
+    et c'est le serveur -- la seule vraie frontiere -- qui etait le plus laxiste.
+    """
+    simple_staff = User.objects.create_user(
+        email="lecture@example.com", password="pw12345678", is_staff=True
+    )
+
+    r = _client(simple_staff).patch(
+        f"/api/staff/users/{member.id}/", {"subscription_bypass": True}, format="json"
+    )
+
+    member.refresh_from_db()
+    assert r.status_code == 403
+    assert member.subscription_bypass is False
