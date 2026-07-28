@@ -222,6 +222,8 @@ class EntitlementView(APIView):
 
         meta = request.META
         if not client.verify_inbound(
+            request.method,
+            request._request.get_full_path(),
             request.body,
             meta.get("HTTP_X_FOXUGLY_TIMESTAMP", ""),
             meta.get("HTTP_X_FOXUGLY_SIGNATURE", ""),

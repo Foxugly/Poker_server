@@ -24,30 +24,44 @@ class BillingUnavailable(Exception):
     """Le central est injoignable ou répond de travers."""
 
 
-def _sign(body: bytes, timestamp: int) -> str:
-    payload = f"{timestamp}.".encode() + (body or b"")
+def _sign(method: str, path: str, body: bytes, timestamp: int) -> str:
+    """La signature couvre l'horodatage, la METHODE et le CHEMIN COMPLET.
+
+    Sans la methode et le chemin, deux GET a corps vide emis dans la meme seconde
+    produisent une signature identique : l'anti-rejeu du central rejette alors le
+    second, pourtant legitime. Et une signature capturee pour une route en
+    ouvrirait une autre. Constate le 2026-07-28.
+    """
+    payload = f"{timestamp}.{method.upper()}.{path}.".encode() + (body or b"")
     digest = hmac.new(settings.BILLING_APP_SECRET.encode(), payload, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 
 
-def _headers(body: bytes) -> dict:
+def _headers(method: str, path: str, body: bytes) -> dict:
     timestamp = int(time.time())
     return {
         "Content-Type": "application/json",
         "X-Foxugly-App": settings.BILLING_APP_SLUG,
         "X-Foxugly-Timestamp": str(timestamp),
-        "X-Foxugly-Signature": _sign(body, timestamp),
+        "X-Foxugly-Signature": _sign(method, path, body, timestamp),
     }
 
 
 def _url(path: str) -> str:
-    return f"{settings.BILLING_BASE_URL.rstrip('/')}/api/v1/{path.lstrip('/')}"
+    return f"{settings.BILLING_BASE_URL.rstrip('/')}{_path(path)}"
+
+
+def _path(path: str) -> str:
+    """Le chemin signe, tel que le central le reconstruira (query comprise)."""
+    return f"/api/v1/{path.lstrip('/')}"
 
 
 def post(path: str, payload: dict) -> dict:
     body = json.dumps(payload).encode()
     try:
-        response = requests.post(_url(path), data=body, headers=_headers(body), timeout=TIMEOUT_SECONDS)
+        response = requests.post(
+            _url(path), data=body, headers=_headers("POST", _path(path), body), timeout=TIMEOUT_SECONDS
+        )
     except Exception as exc:
         logger.warning("billing_unreachable", extra={"path": path, "error": str(exc)})
         raise BillingUnavailable(str(exc)) from exc
@@ -61,7 +75,9 @@ def post(path: str, payload: dict) -> dict:
 def get(path: str) -> dict:
     # Un GET signe le corps vide : l'horodatage suffit à borner la signature.
     try:
-        response = requests.get(_url(path), headers=_headers(b""), timeout=TIMEOUT_SECONDS)
+        response = requests.get(
+            _url(path), headers=_headers("GET", _path(path), b""), timeout=TIMEOUT_SECONDS
+        )
     except Exception as exc:
         logger.warning("billing_unreachable", extra={"path": path, "error": str(exc)})
         raise BillingUnavailable(str(exc)) from exc
@@ -72,7 +88,7 @@ def get(path: str) -> dict:
     return response.json()
 
 
-def verify_inbound(body: bytes, timestamp, signature: str) -> bool:
+def verify_inbound(method: str, path: str, body: bytes, timestamp, signature: str) -> bool:
     """Vérifie une requête entrante signée par le central (push de droit).
 
     Même algorithme, même secret, fenêtre de 5 minutes. L'anti-rejeu, lui, repose
@@ -87,4 +103,4 @@ def verify_inbound(body: bytes, timestamp, signature: str) -> bool:
         return False
     if abs(int(time.time()) - ts) > 300:
         return False
-    return hmac.compare_digest(_sign(body, ts), signature)
+    return hmac.compare_digest(_sign(method, path, body, ts), signature)
