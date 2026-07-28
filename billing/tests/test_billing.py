@@ -186,7 +186,7 @@ def _push(payload, secret="secret-de-test", timestamp=None):
     body = json.dumps(payload).encode()
     ts = timestamp if timestamp is not None else int(time.time())
     with override_settings(**BILLING_ON):
-        signature = _sign(body, ts)
+        signature = _sign("POST", "/api/billing/entitlement/", body, ts)
     return APIClient().post(
         "/api/billing/entitlement/",
         data=body,
@@ -244,7 +244,7 @@ def test_a_push_signed_with_the_wrong_secret_is_refused(owner):
     body = json.dumps(_payload(owner)).encode()
     ts = int(time.time())
     with override_settings(BILLING_APP_SECRET="mauvais-secret"):
-        signature = _sign(body, ts)
+        signature = _sign("POST", "/api/billing/entitlement/", body, ts)
 
     response = APIClient().post(
         "/api/billing/entitlement/",
@@ -377,3 +377,39 @@ def test_history_is_empty_when_billing_is_unconfigured(owner):
 
     assert body["billingEnabled"] is False
     assert body["subscriptions"] == [] and body["invoices"] == []
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_two_different_calls_in_the_same_second_do_not_collide(owner):
+    """Sans la methode et le chemin dans la signature, deux GET a corps vide emis
+    dans la meme seconde produisaient une signature identique, et le central
+    rejetait le second comme un rejeu. Constate le 2026-07-28."""
+    from billing.client import _sign
+
+    ts = int(time.time())
+    a = _sign("GET", "/api/v1/plans/", b"", ts)
+    b = _sign("GET", "/api/v1/entitlements/poker/42/", b"", ts)
+
+    assert a != b
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_push_signed_for_another_path_is_refused(owner):
+    """Une signature capturee ailleurs ne doit pas ouvrir l'endpoint de droits."""
+    from billing.client import _sign
+
+    body = json.dumps(_payload(owner)).encode()
+    ts = int(time.time())
+    signature = _sign("POST", "/api/billing/autre-chose/", body, ts)
+
+    response = APIClient().post(
+        "/api/billing/entitlement/",
+        data=body,
+        content_type="application/json",
+        HTTP_X_FOXUGLY_TIMESTAMP=str(ts),
+        HTTP_X_FOXUGLY_SIGNATURE=signature,
+    )
+
+    assert response.status_code == 401
