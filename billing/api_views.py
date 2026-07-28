@@ -40,6 +40,15 @@ def _unavailable():
     )
 
 
+def _refused(refus):
+    """Relaie le refus du central tel quel.
+
+    Le code et le detail viennent de lui : c'est lui qui sait pourquoi, et le
+    SPA doit pouvoir distinguer « vous avez deja un abonnement » d'une panne.
+    """
+    return error_response(code=refus.code, detail=refus.detail, http_status=refus.status_code)
+
+
 def _sub_for(user):
     sub, _ = Subscription.objects.get_or_create(user=user)
     return sub
@@ -70,6 +79,8 @@ class CheckoutView(APIView):
                     "cancel_url": f"{front}/teams?billing=cancel",
                 },
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         return Response({"url": data.get("url", "")})
@@ -92,6 +103,8 @@ class PortalView(APIView):
                 "portal/",
                 {"external_user_id": str(request.user.id), "return_url": f"{front}/teams"},
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         return Response({"url": data.get("url", "")})
@@ -134,8 +147,10 @@ class SubscriptionView(APIView):
 
         try:
             payload = client.get(f"entitlements/{settings.BILLING_APP_SLUG}/{user.id}/")
-        except client.BillingUnavailable:
-            # Le push finira par arriver : on sert le cache plutôt que d'échouer.
+        except (client.BillingUnavailable, client.BillingRefused):
+            # Panne comme refus, le geste est le meme : servir le cache plutot
+            # que d'echouer. Un rafraichissement de confort ne doit jamais faire
+            # echouer l'affichage de la page.
             return
         apply_entitlement(user, payload)
 
@@ -155,7 +170,7 @@ class BillingHistoryView(APIView):
 
         try:
             data = client.get(f"history/?external_user_id={request.user.id}")
-        except client.BillingUnavailable:
+        except (client.BillingUnavailable, client.BillingRefused):
             return Response({"billingEnabled": True, "subscriptions": [], "invoices": []})
 
         subscriptions = [
