@@ -63,12 +63,12 @@ def client(user):
 
 @pytest.mark.django_db
 def test_anonymous_is_rejected():
-    assert APIClient().get("/api/billing/history/").status_code == 401
+    assert APIClient().get("/api/v1/billing/history/").status_code == 401
 
 
 @pytest.mark.django_db
 def test_empty_when_billing_is_unconfigured(client):
-    resp = client.get("/api/billing/history/")
+    resp = client.get("/api/v1/billing/history/")
 
     assert resp.status_code == 200
     assert resp.json()["subscriptions"] == []
@@ -79,7 +79,7 @@ def test_empty_when_billing_is_unconfigured(client):
 @pytest.mark.django_db
 def test_returns_subscriptions_and_invoices(client):
     with patch("billing.client.get", return_value=CENTRAL_RESPONSE):
-        body = client.get("/api/billing/history/").json()
+        body = client.get("/api/v1/billing/history/").json()
 
     sub = body["subscriptions"][0]
     assert (sub["plan"], sub["status"]) == ("team1", "canceled")
@@ -94,7 +94,7 @@ def test_returns_subscriptions_and_invoices(client):
 def test_an_unreachable_central_degrades_instead_of_500(client):
     """La page doit s'afficher même si le central est indisponible."""
     with patch("billing.client.get", side_effect=BillingUnavailable("timeout")):
-        resp = client.get("/api/billing/history/")
+        resp = client.get("/api/v1/billing/history/")
 
     assert resp.status_code == 200
     assert resp.json() == {"billingEnabled": True, "subscriptions": [], "invoices": []}
@@ -107,7 +107,7 @@ def test_the_queried_identity_comes_from_the_authenticated_user(client, user):
     other = User.objects.create_user(email="other@example.com", password="pw12345678")
 
     with patch("billing.client.get", return_value={"subscriptions": [], "invoices": []}) as called:
-        client.get(f"/api/billing/history/?external_user_id={other.id}")
+        client.get(f"/api/v1/billing/history/?external_user_id={other.id}")
 
     path = called.call_args.args[0]
     assert f"external_user_id={user.id}" in path

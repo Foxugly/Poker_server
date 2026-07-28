@@ -26,7 +26,7 @@ def team(member):
 def _team_room(member, team):
     client = APIClient()
     client.force_authenticate(member)
-    code = client.post("/api/rooms", {"team": team.id}, format="json").json()["code"]
+    code = client.post("/api/v1/rooms", {"team": team.id}, format="json").json()["code"]
     return Room.objects.get(code=code)
 
 
@@ -50,13 +50,13 @@ def test_history_list_and_detail(standard_deck, team, member):
     client = APIClient()
     client.force_authenticate(member)
 
-    days = client.get(f"/api/history/{team.id}/").json()["days"]
+    days = client.get(f"/api/v1/history/{team.id}/").json()["days"]
     assert len(days) == 2
     assert days[0]["count"] == 2  # today, most recent first
     assert days[1]["count"] == 1  # two days ago
 
     today = days[0]["date"]
-    detail = client.get(f"/api/history/{team.id}/{today}/").json()
+    detail = client.get(f"/api/v1/history/{team.id}/{today}/").json()
     assert detail["date"] == today
     assert [e["subject"] for e in detail["entries"]] == ["Budget?", "Hiring?"]
     advise = detail["entries"][0]
@@ -73,9 +73,9 @@ def test_history_forbidden_for_non_member(standard_deck, team, member):
     stranger = User.objects.create_user(email="x@example.com", password="pw12345678")
     client = APIClient()
     client.force_authenticate(stranger)
-    assert client.get(f"/api/history/{team.id}/").status_code == 403
+    assert client.get(f"/api/v1/history/{team.id}/").status_code == 403
     day = datetime.date.today().isoformat()
-    assert client.get(f"/api/history/{team.id}/{day}/").status_code == 403
+    assert client.get(f"/api/v1/history/{team.id}/{day}/").status_code == 403
 
 
 @pytest.mark.django_db
@@ -89,13 +89,13 @@ def test_history_email_admin_only(standard_deck, team, member):
     # A plain member cannot trigger the broadcast.
     bc = APIClient()
     bc.force_authenticate(bob)
-    assert bc.post(f"/api/history/{team.id}/{day}/email/").status_code == 403
+    assert bc.post(f"/api/v1/history/{team.id}/{day}/email/").status_code == 403
 
     # The owner (admin) emails every member with an address.
     mail.outbox.clear()
     ac = APIClient()
     ac.force_authenticate(member)
-    resp = ac.post(f"/api/history/{team.id}/{day}/email/")
+    resp = ac.post(f"/api/v1/history/{team.id}/{day}/email/")
     assert resp.status_code == 200 and resp.json()["sent"] == 2
     assert len(mail.outbox) == 2
     assert {r for m in mail.outbox for r in m.to} == {"m@example.com", "bob@example.com"}
@@ -107,7 +107,7 @@ def test_history_email_empty_day_rejected(standard_deck, team, member):
     day = (datetime.date.today() - datetime.timedelta(days=5)).isoformat()
     ac = APIClient()
     ac.force_authenticate(member)
-    assert ac.post(f"/api/history/{team.id}/{day}/email/").status_code == 400
+    assert ac.post(f"/api/v1/history/{team.id}/{day}/email/").status_code == 400
 
 
 @pytest.mark.django_db
@@ -115,4 +115,4 @@ def test_history_detail_bad_date(standard_deck, team, member):
     _team_room(member, team)
     ac = APIClient()
     ac.force_authenticate(member)
-    assert ac.get(f"/api/history/{team.id}/not-a-date/").status_code == 400
+    assert ac.get(f"/api/v1/history/{team.id}/not-a-date/").status_code == 400

@@ -45,7 +45,7 @@ def back(db):
 
 
 def _snapshot(client, team):
-    resp = client.post("/api/rooms", {"title": "Retro", "team": team.pk}, format="json")
+    resp = client.post("/api/v1/rooms", {"title": "Retro", "team": team.pk}, format="json")
     assert resp.status_code == 201
     return resp.json()["deckSnapshot"]
 
@@ -95,7 +95,7 @@ def test_colour_style_ignores_a_picked_image_but_still_carries_it(client, team, 
 @pytest.mark.django_db
 def test_styles_are_settable_through_the_api(client, team, standard_deck, felt):
     resp = client.patch(
-        f"/api/teams/{team.pk}/",
+        f"/api/v1/teams/{team.pk}/",
         {"felt_style": "image", "felt_id": felt.pk, "card_back_style": "color"},
         format="json",
     )
@@ -107,7 +107,7 @@ def test_styles_are_settable_through_the_api(client, team, standard_deck, felt):
 
 @pytest.mark.django_db
 def test_an_unknown_style_is_rejected(client, team, standard_deck):
-    resp = client.patch(f"/api/teams/{team.pk}/", {"felt_style": "gradient"}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"felt_style": "gradient"}, format="json")
 
     assert resp.status_code == 400
     assert resp.json()["code"] == "invalid_style"
@@ -118,7 +118,7 @@ def test_an_inactive_felt_cannot_be_picked(client, team, standard_deck):
     gone = Felt.objects.create(is_standard=False, image="decks/felts/gone.webp", name="Gone")
     Felt.objects.filter(pk=gone.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"felt_id": gone.pk}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"felt_id": gone.pk}, format="json")
 
     assert resp.status_code == 400
     assert resp.json()["code"] == "felt_unavailable"
@@ -126,7 +126,7 @@ def test_an_inactive_felt_cannot_be_picked(client, team, standard_deck):
 
 @pytest.mark.django_db
 def test_anonymous_room_gets_a_flat_felt_and_the_deck_back(client, standard_deck):
-    resp = APIClient().post("/api/rooms", {"title": "Retro", "username": "Alex"}, format="json")
+    resp = APIClient().post("/api/v1/rooms", {"title": "Retro", "username": "Alex"}, format="json")
 
     snap = resp.json()["deckSnapshot"]
     assert snap["felt"]["style"] == "color"

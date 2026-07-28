@@ -29,7 +29,7 @@ def member(db):
 
 @pytest.mark.django_db
 def test_staff_can_search_users(staff, member):
-    r = _client(staff).get("/api/staff/users/?q=member")
+    r = _client(staff).get("/api/v1/staff/users/?q=member")
     assert r.status_code == 200
     results = r.json()["results"]
     assert len(results) == 1 and results[0]["email"] == "member@example.com"
@@ -38,20 +38,20 @@ def test_staff_can_search_users(staff, member):
 
 @pytest.mark.django_db
 def test_non_staff_cannot_search_users(member):
-    r = _client(member).get("/api/staff/users/?q=member")
+    r = _client(member).get("/api/v1/staff/users/?q=member")
     assert r.status_code == 403
 
 
 @pytest.mark.django_db
 def test_anonymous_cannot_search_users(member):
-    r = APIClient().get("/api/staff/users/?q=member")
+    r = APIClient().get("/api/v1/staff/users/?q=member")
     assert r.status_code == 401
 
 
 @pytest.mark.django_db
 def test_staff_grants_bypass_and_stamps_granted_at(staff, member):
     r = _client(staff).patch(
-        f"/api/staff/users/{member.pk}/",
+        f"/api/v1/staff/users/{member.pk}/",
         {"subscription_bypass": True, "bypass_note": "asso X"},
         format="json",
     )
@@ -64,11 +64,11 @@ def test_staff_grants_bypass_and_stamps_granted_at(staff, member):
 
 @pytest.mark.django_db
 def test_revoking_bypass_keeps_granted_at(staff, member):
-    _client(staff).patch(f"/api/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json")
+    _client(staff).patch(f"/api/v1/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json")
     member.refresh_from_db()
     granted = member.bypass_granted_at
     assert granted is not None
-    _client(staff).patch(f"/api/staff/users/{member.pk}/", {"subscription_bypass": False}, format="json")
+    _client(staff).patch(f"/api/v1/staff/users/{member.pk}/", {"subscription_bypass": False}, format="json")
     member.refresh_from_db()
     assert member.subscription_bypass is False and member.bypass_granted_at == granted
 
@@ -76,7 +76,7 @@ def test_revoking_bypass_keeps_granted_at(staff, member):
 @pytest.mark.django_db
 def test_non_staff_cannot_grant_bypass(member):
     other = User.objects.create_user(email="other@example.com", password="pw12345678")
-    r = _client(member).patch(f"/api/staff/users/{other.pk}/", {"subscription_bypass": True}, format="json")
+    r = _client(member).patch(f"/api/v1/staff/users/{other.pk}/", {"subscription_bypass": True}, format="json")
     assert r.status_code == 403
     other.refresh_from_db()
     assert other.subscription_bypass is False
@@ -87,12 +87,12 @@ def test_grant_then_revoke_writes_two_log_rows(staff, member):
     from accounts.models import BypassGrantLog
 
     _client(staff).patch(
-        f"/api/staff/users/{member.pk}/",
+        f"/api/v1/staff/users/{member.pk}/",
         {"subscription_bypass": True, "bypass_note": "asso X"},
         format="json",
     )
     _client(staff).patch(
-        f"/api/staff/users/{member.pk}/", {"subscription_bypass": False}, format="json"
+        f"/api/v1/staff/users/{member.pk}/", {"subscription_bypass": False}, format="json"
     )
 
     rows = list(BypassGrantLog.objects.order_by("created_at"))
@@ -107,7 +107,7 @@ def test_unchanged_flag_writes_no_log_row(staff, member):
     from accounts.models import BypassGrantLog
 
     _client(staff).patch(
-        f"/api/staff/users/{member.pk}/", {"bypass_note": "note seule"}, format="json"
+        f"/api/v1/staff/users/{member.pk}/", {"bypass_note": "note seule"}, format="json"
     )
     assert not BypassGrantLog.objects.exists()
 
@@ -117,7 +117,7 @@ def test_log_survives_actor_deletion(staff, member):
     from accounts.models import BypassGrantLog
 
     _client(staff).patch(
-        f"/api/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json"
+        f"/api/v1/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json"
     )
     staff.delete()
     row = BypassGrantLog.objects.get()
@@ -129,7 +129,7 @@ def test_log_survives_target_deletion(staff, member):
     from accounts.models import BypassGrantLog
 
     _client(staff).patch(
-        f"/api/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json"
+        f"/api/v1/staff/users/{member.pk}/", {"subscription_bypass": True}, format="json"
     )
     member.delete()
     row = BypassGrantLog.objects.get()
@@ -147,7 +147,7 @@ def test_a_plain_staff_account_cannot_grant_free_access(db, member):
     )
 
     r = _client(simple_staff).patch(
-        f"/api/staff/users/{member.id}/", {"subscription_bypass": True}, format="json"
+        f"/api/v1/staff/users/{member.id}/", {"subscription_bypass": True}, format="json"
     )
 
     member.refresh_from_db()

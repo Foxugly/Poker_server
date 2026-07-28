@@ -50,7 +50,7 @@ def _paid_deck(vote_type, name="Fibonacci", free_tier=False):
 
 @pytest.mark.django_db
 def test_catalogue_lists_standard_deck_and_defaults_to_it(client, team, standard_deck):
-    resp = client.get(f"/api/teams/{team.pk}/decks/")
+    resp = client.get(f"/api/v1/teams/{team.pk}/decks/")
     assert resp.status_code == 200
     body = resp.json()
     assert [d["id"] for d in body["decks"]] == [standard_deck.pk]
@@ -64,7 +64,7 @@ def test_a_team_sees_paid_only_decks_too(client, team, standard_deck):
     """A team is always paid, so it sees the whole catalogue, free tier or not."""
     paid = _paid_deck(standard_deck.vote_type, "Fibonacci")
 
-    ids = [d["id"] for d in client.get(f"/api/teams/{team.pk}/decks/").json()["decks"]]
+    ids = [d["id"] for d in client.get(f"/api/v1/teams/{team.pk}/decks/").json()["decks"]]
     assert standard_deck.pk in ids
     assert paid.pk in ids
 
@@ -73,12 +73,12 @@ def test_a_team_sees_paid_only_decks_too(client, team, standard_deck):
 def test_enable_several_decks_and_clear(client, team, standard_deck):
     mine = _paid_deck(standard_deck.vote_type)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [standard_deck.pk, mine.pk]}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"deck_ids": [standard_deck.pk, mine.pk]}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
     assert set(team.decks.values_list("pk", flat=True)) == {standard_deck.pk, mine.pk}
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": []}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"deck_ids": []}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
     assert team.decks.count() == 0
@@ -89,7 +89,7 @@ def test_cannot_enable_an_inactive_deck(client, team, standard_deck):
     gone = _paid_deck(standard_deck.vote_type)
     Deck.objects.filter(pk=gone.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [gone.pk]}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"deck_ids": [gone.pk]}, format="json")
     assert resp.status_code == 400
     assert resp.json()["code"] == "deck_unavailable"
     team.refresh_from_db()
@@ -100,7 +100,7 @@ def test_cannot_enable_an_inactive_deck(client, team, standard_deck):
 def test_non_member_cannot_read_catalogue(team, standard_deck):
     c = APIClient()
     c.force_authenticate(_user("stranger@example.com"))
-    assert c.get(f"/api/teams/{team.pk}/decks/").status_code == 403
+    assert c.get(f"/api/v1/teams/{team.pk}/decks/").status_code == 403
 
 
 @pytest.mark.django_db
@@ -108,7 +108,7 @@ def test_room_freezes_every_enabled_deck(client, team, standard_deck):
     mine = _paid_deck(standard_deck.vote_type)
     team.decks.set([mine.pk, standard_deck.pk])
 
-    resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
+    resp = client.post("/api/v1/rooms", {"title": "Sprint", "team": team.pk}, format="json")
     assert resp.status_code == 201
     body = resp.json()
     assert {d["deckId"] for d in body["availableDecks"]} == {mine.pk, standard_deck.pk}
@@ -136,7 +136,7 @@ def test_untranslated_custom_deck_serializes_instead_of_500(client, team, standa
     deck.name = "Mazzo"
     deck.save()
 
-    resp = client.get(f"/api/teams/{team.pk}/decks/", HTTP_ACCEPT_LANGUAGE="en")
+    resp = client.get(f"/api/v1/teams/{team.pk}/decks/", HTTP_ACCEPT_LANGUAGE="en")
     assert resp.status_code == 200
     entry = next(d for d in resp.json()["decks"] if d["id"] == deck.pk)
     assert entry["name"] == "Mazzo"
@@ -174,7 +174,7 @@ def _extra_back(name="Blue", free_tier=True):
 @pytest.mark.django_db
 def test_catalogue_lists_card_backs(client, team, standard_deck):
     mine = _extra_back()
-    body = client.get(f"/api/teams/{team.pk}/decks/").json()
+    body = client.get(f"/api/v1/teams/{team.pk}/decks/").json()
     ids = [b["id"] for b in body["card_backs"]]
     assert mine.pk in ids
     assert body["selected_card_back_id"] is None
@@ -183,7 +183,7 @@ def test_catalogue_lists_card_backs(client, team, standard_deck):
 @pytest.mark.django_db
 def test_back_and_deck_are_picked_independently(client, team, standard_deck):
     back = _extra_back()
-    resp = client.patch(f"/api/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
     # Picking a back leaves the fronts untouched.
@@ -196,7 +196,7 @@ def test_cannot_pick_an_inactive_card_back(client, team, standard_deck):
     back = _extra_back()
     CardBack.objects.filter(pk=back.pk).update(is_active=False)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"card_back_id": back.pk}, format="json")
     assert resp.status_code == 400
     assert resp.json()["code"] == "card_back_unavailable"
 
@@ -208,14 +208,14 @@ def test_room_snapshot_uses_the_picked_back_over_the_deck_default(client, team, 
     team.card_back_style = "image"
     team.save(update_fields=["card_back", "card_back_style"])
 
-    resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
+    resp = client.post("/api/v1/rooms", {"title": "Sprint", "team": team.pk}, format="json")
     assert resp.status_code == 201
     assert resp.json()["deckSnapshot"]["cardBack"]["image"].endswith("custom.webp")
 
 
 @pytest.mark.django_db
 def test_room_snapshot_falls_back_to_deck_default_back(client, team, standard_deck):
-    resp = client.post("/api/rooms", {"title": "Sprint", "team": team.pk}, format="json")
+    resp = client.post("/api/v1/rooms", {"title": "Sprint", "team": team.pk}, format="json")
     assert resp.status_code == 201
     assert resp.json()["deckSnapshot"]["cardBack"]["image"].endswith("back.webp")
 
@@ -248,7 +248,7 @@ def test_picking_from_the_catalogue_is_free(client, team, standard_deck, monkeyp
     monkeypatch.setattr("teams.api_views.paid_required", lambda t: None)
     monkeypatch.setattr("billing.service.billing_configured", lambda: True)
 
-    resp = client.patch(f"/api/teams/{team.pk}/", {"deck_ids": [standard_deck.pk]}, format="json")
+    resp = client.patch(f"/api/v1/teams/{team.pk}/", {"deck_ids": [standard_deck.pk]}, format="json")
     assert resp.status_code == 200
     team.refresh_from_db()
     assert list(team.decks.values_list("pk", flat=True)) == [standard_deck.pk]

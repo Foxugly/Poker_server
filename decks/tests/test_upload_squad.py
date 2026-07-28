@@ -83,7 +83,7 @@ def test_member_upload_is_forbidden(team):
     member = _user("mem@example.com")
     TeamMembership.objects.create(team=team, user=member, role=TeamRole.MEMBER)
 
-    resp = _auth(member).post("/api/decks/card-backs/", {"name": "x", "image": _png()}, format="multipart")
+    resp = _auth(member).post("/api/v1/decks/card-backs/", {"name": "x", "image": _png()}, format="multipart")
     assert resp.status_code == 403
 
 
@@ -92,7 +92,7 @@ def test_member_upload_is_forbidden(team):
 @pytest.mark.django_db
 def test_owner_uploads_a_custom_back_and_the_team_sees_it(team, owner):
     resp = _auth(owner).post(
-        "/api/decks/card-backs/", {"name": "Mon dos", "image": _png()}, format="multipart"
+        "/api/v1/decks/card-backs/", {"name": "Mon dos", "image": _png()}, format="multipart"
     )
     assert resp.status_code == 201
     back_id = resp.json()["id"]
@@ -110,7 +110,7 @@ def test_a_managers_upload_is_visible_to_the_owners_team(team, owner):
     TeamMembership.objects.create(team=other, user=owner, role=TeamRole.OWNER)
     TeamMembership.objects.create(team=other, user=manager, role=TeamRole.MANAGER)
 
-    mine = _auth(manager).post("/api/decks/felts/", {"name": "M", "image": _png()}, format="multipart").json()
+    mine = _auth(manager).post("/api/v1/decks/felts/", {"name": "M", "image": _png()}, format="multipart").json()
 
     # Visible to `team` (same owner o1), because the manager is in o1's squad.
     assert mine["id"] in [f.pk for f in available_felts(team)]
@@ -122,7 +122,7 @@ def test_a_strangers_upload_is_not_visible(team):
     st = Team.objects.create(name="Strangers", owner=stranger_team_owner)
     TeamMembership.objects.create(team=st, user=stranger_team_owner, role=TeamRole.OWNER)
     theirs = _auth(stranger_team_owner).post(
-        "/api/decks/card-backs/", {"name": "Theirs", "image": _png()}, format="multipart"
+        "/api/v1/decks/card-backs/", {"name": "Theirs", "image": _png()}, format="multipart"
     ).json()
 
     assert theirs["id"] not in [b.pk for b in available_card_backs(team)]
@@ -140,7 +140,7 @@ def test_builtins_stay_visible_to_everyone(team, standard_deck):
 @pytest.mark.django_db
 def test_a_non_image_is_rejected(team, owner):
     bad = SimpleUploadedFile("evil.png", b"not an image", content_type="image/png")
-    resp = _auth(owner).post("/api/decks/card-backs/", {"name": "x", "image": bad}, format="multipart")
+    resp = _auth(owner).post("/api/v1/decks/card-backs/", {"name": "x", "image": bad}, format="multipart")
     assert resp.status_code == 400
     assert resp.json()["code"] == "invalid_image"
 
@@ -151,7 +151,7 @@ def test_an_oversized_image_is_rejected(team, owner, settings):
 
     # A 20 MB payload is over the 3 MB cap regardless of pixels.
     big = SimpleUploadedFile("big.png", b"\x89PNG\r\n" + b"0" * (20 * 1024 * 1024), content_type="image/png")
-    resp = _auth(owner).post("/api/decks/card-backs/", {"name": "x", "image": big}, format="multipart")
+    resp = _auth(owner).post("/api/v1/decks/card-backs/", {"name": "x", "image": big}, format="multipart")
     assert resp.status_code == 400
     assert resp.json()["code"] == "invalid_image"
 
@@ -163,8 +163,8 @@ def test_only_the_uploader_can_delete(team, owner):
     back = CardBack.objects.create(is_standard=False, uploaded_by=owner, name="Mine", image="decks/backs/x.png")
     other = _user("other@example.com")
 
-    assert _auth(other).delete(f"/api/decks/card-backs/{back.pk}/").status_code == 403
-    assert _auth(owner).delete(f"/api/decks/card-backs/{back.pk}/").status_code == 204
+    assert _auth(other).delete(f"/api/v1/decks/card-backs/{back.pk}/").status_code == 403
+    assert _auth(owner).delete(f"/api/v1/decks/card-backs/{back.pk}/").status_code == 204
     assert not CardBack.objects.filter(pk=back.pk).exists()
 
 

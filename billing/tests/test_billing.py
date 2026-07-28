@@ -66,21 +66,21 @@ def test_unconfigured_billing_is_inert(owner):
     assert billing_configured() is False
     assert user_is_paid(owner) is True
     assert user_quota(owner) >= 1
-    assert _client(owner).post("/api/teams/", {"name": "A"}, format="json").status_code == 201
-    body = _client(owner).get("/api/billing/subscription/").json()
+    assert _client(owner).post("/api/v1/teams/", {"name": "A"}, format="json").status_code == 201
+    body = _client(owner).get("/api/v1/billing/subscription/").json()
     assert body["billingEnabled"] is False and body["isPaid"] is True
 
 
 @pytest.mark.django_db
 def test_checkout_portal_503_when_unconfigured(owner):
     c = _client(owner)
-    assert c.post("/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json").status_code == 503
-    assert c.post("/api/billing/portal/", {}, format="json").status_code == 503
+    assert c.post("/api/v1/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json").status_code == 503
+    assert c.post("/api/v1/billing/portal/", {}, format="json").status_code == 503
 
 
 @pytest.mark.django_db
 def test_entitlement_push_503_when_unconfigured(db):
-    assert APIClient().post("/api/billing/entitlement/", {}, format="json").status_code == 503
+    assert APIClient().post("/api/v1/billing/entitlement/", {}, format="json").status_code == 503
 
 
 # ------------------------------------------------------------------------ gating
@@ -91,7 +91,7 @@ def test_configured_gates_team_creation(owner):
     assert billing_configured() is True
     assert user_is_paid(owner) is False
     assert user_quota(owner) == 0
-    r = _client(owner).post("/api/teams/", {"name": "A"}, format="json")
+    r = _client(owner).post("/api/v1/teams/", {"name": "A"}, format="json")
     assert r.status_code == 402 and r.json()["code"] == "subscription_required"
 
 
@@ -102,8 +102,8 @@ def test_quota_enforced_for_a_paid_subscription(owner):
 
     assert user_quota(owner) == 1
     c = _client(owner)
-    assert c.post("/api/teams/", {"name": "A"}, format="json").status_code == 201
-    r = c.post("/api/teams/", {"name": "B"}, format="json")
+    assert c.post("/api/v1/teams/", {"name": "A"}, format="json").status_code == 201
+    r = c.post("/api/v1/teams/", {"name": "B"}, format="json")
     assert r.status_code == 402 and r.json()["code"] == "quota_exceeded"
 
 
@@ -175,7 +175,7 @@ def test_bypass_allows_team_creation_through_api(owner):
     owner.subscription_bypass = True
     owner.save()
 
-    r = _client(owner).post("/api/teams/", {"name": "A"}, format="json")
+    r = _client(owner).post("/api/v1/teams/", {"name": "A"}, format="json")
 
     assert r.status_code == 201, r.json()
 
@@ -186,9 +186,9 @@ def _push(payload, secret="secret-de-test", timestamp=None):
     body = json.dumps(payload).encode()
     ts = timestamp if timestamp is not None else int(time.time())
     with override_settings(**BILLING_ON):
-        signature = _sign("POST", "/api/billing/entitlement/", body, ts)
+        signature = _sign("POST", "/api/v1/billing/entitlement/", body, ts)
     return APIClient().post(
-        "/api/billing/entitlement/",
+        "/api/v1/billing/entitlement/",
         data=body,
         content_type="application/json",
         HTTP_X_FOXUGLY_TIMESTAMP=str(ts),
@@ -232,7 +232,7 @@ def test_a_signed_push_updates_the_local_cache(owner):
 @override_settings(**BILLING_ON)
 @pytest.mark.django_db
 def test_an_unsigned_push_is_refused(owner):
-    response = APIClient().post("/api/billing/entitlement/", _payload(owner), format="json")
+    response = APIClient().post("/api/v1/billing/entitlement/", _payload(owner), format="json")
 
     assert response.status_code == 401
     assert Subscription.objects.count() == 0
@@ -244,10 +244,10 @@ def test_a_push_signed_with_the_wrong_secret_is_refused(owner):
     body = json.dumps(_payload(owner)).encode()
     ts = int(time.time())
     with override_settings(BILLING_APP_SECRET="mauvais-secret"):
-        signature = _sign("POST", "/api/billing/entitlement/", body, ts)
+        signature = _sign("POST", "/api/v1/billing/entitlement/", body, ts)
 
     response = APIClient().post(
-        "/api/billing/entitlement/",
+        "/api/v1/billing/entitlement/",
         data=body,
         content_type="application/json",
         HTTP_X_FOXUGLY_TIMESTAMP=str(ts),
@@ -310,7 +310,7 @@ def test_a_push_without_delivery_id_is_refused(owner):
 def test_checkout_relays_to_the_central(owner):
     with patch("billing.client.post", return_value={"url": "https://checkout.stripe.com/c/x"}) as sent:
         response = _client(owner).post(
-            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+            "/api/v1/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
         )
 
     assert response.status_code == 200
@@ -328,7 +328,7 @@ def test_an_unreachable_central_yields_503_not_500(owner):
 
     with patch("billing.client.post", side_effect=BillingUnavailable("timeout")):
         response = _client(owner).post(
-            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+            "/api/v1/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
         )
 
     assert response.status_code == 503
@@ -341,7 +341,7 @@ def test_the_status_endpoint_never_calls_the_network_without_refresh(owner):
     _paid_sub(owner)
 
     with patch("billing.client.get") as called:
-        body = _client(owner).get("/api/billing/subscription/").json()
+        body = _client(owner).get("/api/v1/billing/subscription/").json()
 
     called.assert_not_called()
     assert body["isPaid"] is True
@@ -354,7 +354,7 @@ def test_refresh_pulls_the_central_for_the_checkout_return(owner):
     """Sans ce pull, l'utilisateur revenant de Stripe avant le webhook verrait
     « aucun abonnement » juste après avoir payé."""
     with patch("billing.client.get", return_value=_payload(owner)) as pulled:
-        body = _client(owner).get("/api/billing/subscription/?refresh=1").json()
+        body = _client(owner).get("/api/v1/billing/subscription/?refresh=1").json()
 
     pulled.assert_called_once()
     assert body["isPaid"] is True
@@ -366,14 +366,14 @@ def test_history_degrades_to_empty_lists_when_the_central_is_down(owner):
     from billing.client import BillingUnavailable
 
     with patch("billing.client.get", side_effect=BillingUnavailable("timeout")):
-        body = _client(owner).get("/api/billing/history/").json()
+        body = _client(owner).get("/api/v1/billing/history/").json()
 
     assert body == {"billingEnabled": True, "subscriptions": [], "invoices": []}
 
 
 @pytest.mark.django_db
 def test_history_is_empty_when_billing_is_unconfigured(owner):
-    body = _client(owner).get("/api/billing/history/").json()
+    body = _client(owner).get("/api/v1/billing/history/").json()
 
     assert body["billingEnabled"] is False
     assert body["subscriptions"] == [] and body["invoices"] == []
@@ -402,10 +402,10 @@ def test_a_push_signed_for_another_path_is_refused(owner):
 
     body = json.dumps(_payload(owner)).encode()
     ts = int(time.time())
-    signature = _sign("POST", "/api/billing/autre-chose/", body, ts)
+    signature = _sign("POST", "/api/v1/billing/autre-chose/", body, ts)
 
     response = APIClient().post(
-        "/api/billing/entitlement/",
+        "/api/v1/billing/entitlement/",
         data=body,
         content_type="application/json",
         HTTP_X_FOXUGLY_TIMESTAMP=str(ts),
@@ -432,7 +432,7 @@ def test_a_refusal_keeps_its_meaning_instead_of_becoming_an_outage(owner):
 
     with patch("billing.client.requests.post", return_value=reponse):
         r = _client(owner).post(
-            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+            "/api/v1/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
         )
 
     assert r.status_code == 409
@@ -451,7 +451,7 @@ def test_a_server_error_at_the_central_is_still_an_outage(owner):
 
     with patch("billing.client.requests.post", return_value=reponse):
         r = _client(owner).post(
-            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+            "/api/v1/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
         )
 
     assert r.status_code == 503
@@ -466,7 +466,62 @@ def test_a_refused_history_still_renders_the_page(owner):
     from billing.client import BillingRefused
 
     with patch("billing.client.get", side_effect=BillingRefused(404, "not_found", "Inconnu")):
-        r = _client(owner).get("/api/billing/history/")
+        r = _client(owner).get("/api/v1/billing/history/")
 
     assert r.status_code == 200
     assert r.json()["subscriptions"] == []
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_the_old_prefix_still_reaches_the_api_during_the_transition(owner):
+    """Backends et frontends se deploient separement : sans alias, un bundle
+    encore en cache prendrait un 404 pendant la fenetre de bascule."""
+    assert _client(owner).get("/api/billing/subscription/").status_code == 200
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_the_alias_never_rewrites_a_path_already_canonical(owner):
+    """Sinon /api/v1/... deviendrait /api/v1/v1/... -- l'API entiere disparaitrait."""
+    assert _client(owner).get("/api/v1/billing/subscription/").status_code == 200
+    assert _client(owner).get("/api/v1/v1/billing/subscription/").status_code == 404
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_signed_push_on_the_canonical_path_is_accepted(owner):
+    """La signature couvre le CHEMIN : le central doit pousser sur /api/v1/...
+    Si l'alias reecrivait un push signe sur l'ancien chemin, la verification
+    comparerait deux chemins differents et rejetterait un appel legitime."""
+    r = _push(_payload(owner))
+
+    assert r.status_code == 200
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_signed_push_on_the_legacy_path_is_refused(owner):
+    """L'alias ne rattrape PAS un appel signe sur l'ancien chemin, et c'est
+    voulu : la signature couvre le chemin, la reecriture le change, donc la
+    verification compare deux chemins differents.
+
+    D'ou la consequence operationnelle : `App.entitlement_path` du central DOIT
+    pointer sur /api/v1/billing/entitlement/. Ce test epingle le piege plutot
+    que de le laisser se decouvrir en production.
+    """
+    payload = _payload(owner)
+    body = json.dumps(payload).encode()
+    ts = int(time.time())
+    with override_settings(**BILLING_ON):
+        signature = _sign("POST", "/api/billing/entitlement/", body, ts)
+
+    r = APIClient().post(
+        "/api/billing/entitlement/",
+        data=body,
+        content_type="application/json",
+        HTTP_X_FOXUGLY_TIMESTAMP=str(ts),
+        HTTP_X_FOXUGLY_SIGNATURE=signature,
+    )
+
+    assert r.status_code == 401

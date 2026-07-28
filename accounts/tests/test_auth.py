@@ -17,7 +17,7 @@ def client():
 
 def _register(client, email="sam@example.com", password="sup3rSecret!", name="Sam"):
     return client.post(
-        "/api/auth/register/",
+        "/api/v1/auth/register/",
         {"email": email, "password": password, "display_name": name},
         format="json",
     )
@@ -37,19 +37,19 @@ def test_register_creates_unconfirmed_user_without_tokens(client):
 @pytest.mark.django_db
 def test_login_blocked_until_email_confirmed_then_works(client):
     _register(client)
-    resp = client.post("/api/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json")
+    resp = client.post("/api/v1/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json")
     assert resp.status_code == 403
     assert resp.json()["code"] == "email_not_verified"
 
     user = User.objects.get(email="sam@example.com")
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    confirm = client.post("/api/auth/email/confirm/", {"uid": uid, "token": token}, format="json")
+    confirm = client.post("/api/v1/auth/email/confirm/", {"uid": uid, "token": token}, format="json")
     assert confirm.status_code == 200
     assert confirm.json()["access"] and confirm.json()["refresh"]
     assert confirm.json()["user"]["email_confirmed"] is True
 
-    login = client.post("/api/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json")
+    login = client.post("/api/v1/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json")
     assert login.status_code == 200
     assert login.json()["user"]["display_name"] == "Sam"
 
@@ -66,19 +66,19 @@ def test_register_duplicate_is_anti_enumeration(client):
 def test_forgot_and_reset_password(client):
     _register(client)
     user = User.objects.get(email="sam@example.com")
-    forgot = client.post("/api/auth/forgot-password/", {"email": "sam@example.com"}, format="json")
+    forgot = client.post("/api/v1/auth/forgot-password/", {"email": "sam@example.com"}, format="json")
     assert forgot.status_code == 200  # anti-leak, always 200
 
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
     reset = client.post(
-        "/api/auth/reset-password/",
+        "/api/v1/auth/reset-password/",
         {"uid": uid, "token": token, "password": "brandN3wPass!"},
         format="json",
     )
     assert reset.status_code == 200
     # new password works + reset confirmed the email
-    login = client.post("/api/auth/login/", {"email": "sam@example.com", "password": "brandN3wPass!"}, format="json")
+    login = client.post("/api/v1/auth/login/", {"email": "sam@example.com", "password": "brandN3wPass!"}, format="json")
     assert login.status_code == 200
 
 
@@ -89,14 +89,14 @@ def test_magic_link_single_use(client):
     user.email_confirmed = True
     user.save(update_fields=["email_confirmed"])
 
-    req = client.post("/api/auth/magic-link/", {"email": "sam@example.com"}, format="json")
+    req = client.post("/api/v1/auth/magic-link/", {"email": "sam@example.com"}, format="json")
     assert req.status_code == 200
     token = MagicLinkToken.objects.filter(user=user).latest("created_at").token
 
-    ok = client.post("/api/auth/magic-link/verify/", {"token": token}, format="json")
+    ok = client.post("/api/v1/auth/magic-link/verify/", {"token": token}, format="json")
     assert ok.status_code == 200 and ok.json()["access"]
     # single use → second attempt rejected
-    again = client.post("/api/auth/magic-link/verify/", {"token": token}, format="json")
+    again = client.post("/api/v1/auth/magic-link/verify/", {"token": token}, format="json")
     assert again.status_code == 400
 
 
@@ -106,15 +106,15 @@ def test_refresh_rotates_and_me_endpoint(client):
     user = User.objects.get(email="sam@example.com")
     user.email_confirmed = True
     user.save(update_fields=["email_confirmed"])
-    login = client.post("/api/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json").json()
+    login = client.post("/api/v1/auth/login/", {"email": "sam@example.com", "password": "sup3rSecret!"}, format="json").json()
 
-    refreshed = client.post("/api/auth/token/refresh/", {"refresh": login["refresh"]}, format="json")
+    refreshed = client.post("/api/v1/auth/token/refresh/", {"refresh": login["refresh"]}, format="json")
     assert refreshed.status_code == 200
     assert refreshed.json()["access"]
     assert refreshed.json()["refresh"] != login["refresh"]  # rotation
 
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {login['access']}")
-    me = client.get("/api/auth/me/")
+    me = client.get("/api/v1/auth/me/")
     assert me.status_code == 200 and me.json()["email"] == "sam@example.com"
-    patched = client.patch("/api/auth/me/", {"display_name": "Samuel"}, format="json")
+    patched = client.patch("/api/v1/auth/me/", {"display_name": "Samuel"}, format="json")
     assert patched.status_code == 200 and patched.json()["display_name"] == "Samuel"
