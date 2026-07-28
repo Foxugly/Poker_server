@@ -413,3 +413,60 @@ def test_a_push_signed_for_another_path_is_refused(owner):
     )
 
     assert response.status_code == 401
+
+
+# --------------------------------------- un refus n'est pas une panne
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_refusal_keeps_its_meaning_instead_of_becoming_an_outage(owner):
+    """« Vous avez deja un abonnement » n'est pas une panne. Le presenter comme
+    un service indisponible invite a reessayer un geste qui echouera toujours."""
+    import requests
+
+    reponse = requests.Response()
+    reponse.status_code = 409
+    reponse._content = json.dumps(
+        {"code": "already_subscribed", "detail": "Un abonnement est deja en cours."}
+    ).encode()
+
+    with patch("billing.client.requests.post", return_value=reponse):
+        r = _client(owner).post(
+            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+        )
+
+    assert r.status_code == 409
+    assert r.json()["code"] == "already_subscribed"
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_server_error_at_the_central_is_still_an_outage(owner):
+    """Le tri doit se faire sur le code : 5xx = panne, retentable."""
+    import requests
+
+    reponse = requests.Response()
+    reponse.status_code = 502
+    reponse._content = b""
+
+    with patch("billing.client.requests.post", return_value=reponse):
+        r = _client(owner).post(
+            "/api/billing/checkout/", {"plan": "team1", "interval": "monthly"}, format="json"
+        )
+
+    assert r.status_code == 503
+    assert r.json()["code"] == "billing_unavailable"
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_refused_history_still_renders_the_page(owner):
+    """Sur un chemin de confort, refus et panne appellent le meme geste : servir
+    ce qu'on a, plutot que de renvoyer une 500 non geree."""
+    from billing.client import BillingRefused
+
+    with patch("billing.client.get", side_effect=BillingRefused(404, "not_found", "Inconnu")):
+        r = _client(owner).get("/api/billing/history/")
+
+    assert r.status_code == 200
+    assert r.json()["subscriptions"] == []
