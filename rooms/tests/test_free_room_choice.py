@@ -32,7 +32,7 @@ def test_catalogue_is_public_and_lists_only_the_free_subset(client, standard_dec
     paid_only = _extra_deck(standard_deck.vote_type, free_tier=False, name="Paid only")
     free_extra = _extra_deck(standard_deck.vote_type, free_tier=True, name="Free extra")
 
-    resp = client.get("/api/decks/catalogue/")
+    resp = client.get("/api/v1/decks/catalogue/")
 
     assert resp.status_code == 200  # no auth required
     ids = [d["id"] for d in resp.json()["decks"]]
@@ -47,7 +47,7 @@ def test_room_always_carries_the_whole_free_catalogue(client, standard_deck):
     extra = _extra_deck(standard_deck.vote_type, free_tier=True)
 
     resp = client.post(
-        "/api/rooms",
+        "/api/v1/rooms",
         {"title": "Retro", "username": "Alex", "deck_ids": [extra.pk]},
         format="json",
     )
@@ -64,7 +64,7 @@ def test_a_paid_only_deck_cannot_be_smuggled_in(client, standard_deck):
     paid_only = _extra_deck(standard_deck.vote_type, free_tier=False)
 
     resp = client.post(
-        "/api/rooms",
+        "/api/v1/rooms",
         {"title": "Retro", "username": "Alex", "deck_ids": [paid_only.pk]},
         format="json",
     )
@@ -77,7 +77,7 @@ def test_a_paid_only_deck_cannot_be_smuggled_in(client, standard_deck):
 
 @pytest.mark.django_db
 def test_no_choice_falls_back_to_the_first_free_deck(client, standard_deck):
-    resp = client.post("/api/rooms", {"title": "Retro", "username": "Alex"}, format="json")
+    resp = client.post("/api/v1/rooms", {"title": "Retro", "username": "Alex"}, format="json")
 
     assert resp.status_code == 201
     assert resp.json()["deckSnapshot"]["deckId"] == standard_deck.pk
@@ -90,7 +90,7 @@ def test_picked_free_card_back_wins_over_the_deck_default(client, standard_deck)
     )
 
     resp = client.post(
-        "/api/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"
+        "/api/v1/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"
     )
 
     assert resp.status_code == 201
@@ -104,7 +104,7 @@ def test_a_paid_only_card_back_is_ignored(client, standard_deck):
     )
 
     resp = client.post(
-        "/api/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"
+        "/api/v1/rooms", {"title": "Retro", "username": "Alex", "card_back_id": back.pk}, format="json"
     )
 
     assert resp.status_code == 201
@@ -119,6 +119,6 @@ def test_a_free_tier_custom_back_is_offered(client, standard_deck):
         is_standard=False, free_tier=True, image="decks/backs/custom.webp", name="Custom free"
     )
 
-    resp = client.get("/api/decks/catalogue/")
+    resp = client.get("/api/v1/decks/catalogue/")
 
     assert back.pk in [b["id"] for b in resp.json()["card_backs"]]

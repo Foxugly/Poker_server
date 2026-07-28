@@ -38,7 +38,7 @@ def test_me_exposes_subscription_bypass():
     user = User.objects.create_user(email="me@example.com", password="pw12345678")
     user.subscription_bypass = True
     user.save()
-    r = _client(user).get("/api/auth/me/")
+    r = _client(user).get("/api/v1/auth/me/")
     assert r.status_code == 200 and r.json()["subscription_bypass"] is True
 
 
@@ -48,7 +48,7 @@ def test_patch_me_cannot_self_grant_bypass():
     utilise ProfileUpdateSerializer (fields=["display_name"] uniquement), donc
     subscription_bypass n'est jamais pris en compte en écriture par cette route."""
     user = User.objects.create_user(email="esc@example.com", password="pw12345678")
-    r = _client(user).patch("/api/auth/me/", {"subscription_bypass": True}, format="json")
+    r = _client(user).patch("/api/v1/auth/me/", {"subscription_bypass": True}, format="json")
     assert r.status_code == 200
     user.refresh_from_db()
     assert user.subscription_bypass is False
@@ -74,5 +74,5 @@ def test_subscription_endpoint_reports_bypass():
     user = User.objects.create_user(email="sub@example.com", password="pw12345678")
     user.subscription_bypass = True
     user.save()
-    r = _client(user).get("/api/billing/subscription/")
+    r = _client(user).get("/api/v1/billing/subscription/")
     assert r.status_code == 200 and r.json()["bypass"] is True
