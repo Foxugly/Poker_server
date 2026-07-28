@@ -1,15 +1,52 @@
-"""Billing history endpoint — subscriptions + invoices proxied from Stripe.
+"""Historique de facturation — désormais relayé depuis le service central (lot L4).
 
-Nothing is mirrored locally, so the tests pin the two behaviours that matter:
-the payload shape, and that a Stripe problem degrades instead of 500-ing.
+Rien n'est miré localement : les tests épinglent les trois comportements qui
+comptent — la forme du payload rendu au SPA, la dégradation propre quand le
+central est injoignable, et le fait que l'identité interrogée vienne toujours de
+l'utilisateur authentifié.
 """
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework.test import APIClient
 
-from billing.models import Subscription
+from billing.client import BillingUnavailable
 
 User = get_user_model()
+
+BILLING_ON = {
+    "BILLING_BASE_URL": "https://billing-api.foxugly.com",
+    "BILLING_APP_SECRET": "secret-de-test",
+    "BILLING_APP_SLUG": "poker",
+}
+
+CENTRAL_RESPONSE = {
+    "subscriptions": [
+        {
+            "id": "sub_1",
+            "status": "canceled",
+            "plan": "team1",
+            "interval": "monthly",
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "current_period_end": "2026-02-01T00:00:00+00:00",
+            "canceled_at": "2026-02-01T00:00:00+00:00",
+        }
+    ],
+    "invoices": [
+        {
+            "id": "in_1",
+            "number": "F-001",
+            "status": "paid",
+            "amount_paid": 500,
+            "currency": "EUR",
+            "created": "2026-01-01T00:00:00+00:00",
+            "hosted_invoice_url": "https://stripe.test/i/1",
+            "invoice_pdf": "https://stripe.test/i/1.pdf",
+        }
+    ],
+}
 
 
 @pytest.fixture
@@ -24,31 +61,13 @@ def client(user):
     return c
 
 
-class _FakeStripe:
-    """Minimal stand-in for the two list calls the view makes."""
-
-    def __init__(self, subs=None, invoices=None, raises=False):
-        self._subs, self._invoices, self._raises = subs or [], invoices or [], raises
-        self.Subscription = self._Lister(self._subs, raises)
-        self.Invoice = self._Lister(self._invoices, raises)
-
-    class _Lister:
-        def __init__(self, data, raises):
-            self._data, self._raises = data, raises
-
-        def list(self, **kwargs):
-            if self._raises:
-                raise RuntimeError("stripe is down")
-            return {"data": self._data}
-
-
 @pytest.mark.django_db
 def test_anonymous_is_rejected():
     assert APIClient().get("/api/billing/history/").status_code == 401
 
 
 @pytest.mark.django_db
-def test_empty_when_the_user_never_subscribed(client):
+def test_empty_when_billing_is_unconfigured(client):
     resp = client.get("/api/billing/history/")
 
     assert resp.status_code == 200
@@ -56,53 +75,40 @@ def test_empty_when_the_user_never_subscribed(client):
     assert resp.json()["invoices"] == []
 
 
+@override_settings(**BILLING_ON)
 @pytest.mark.django_db
-def test_returns_subscriptions_and_invoices(client, user, monkeypatch, settings):
-    Subscription.objects.create(user=user, stripe_customer_id="cus_1")
-    settings.STRIPE_PRICES = {"team1": {"monthly": "price_m", "yearly": ""}}
-    fake = _FakeStripe(
-        subs=[{
-            "id": "sub_1", "status": "canceled", "start_date": 1_700_000_000,
-            "current_period_end": 1_700_600_000, "canceled_at": 1_700_600_000,
-            "items": {"data": [{"price": {"id": "price_m"}}]},
-        }],
-        invoices=[{
-            "id": "in_1", "number": "F-001", "status": "paid", "amount_paid": 500,
-            "currency": "eur", "created": 1_700_000_000,
-            "hosted_invoice_url": "https://stripe.test/i/1", "invoice_pdf": "https://stripe.test/i/1.pdf",
-        }],
-    )
-    monkeypatch.setattr("billing.api_views.stripe_client", lambda: fake)
+def test_returns_subscriptions_and_invoices(client):
+    with patch("billing.client.get", return_value=CENTRAL_RESPONSE):
+        body = client.get("/api/billing/history/").json()
 
-    body = client.get("/api/billing/history/").json()
-
-    assert body["subscriptions"][0]["plan"] == "team1"
-    assert body["subscriptions"][0]["status"] == "canceled"
-    assert body["subscriptions"][0]["canceledAt"] is not None
+    sub = body["subscriptions"][0]
+    assert (sub["plan"], sub["status"]) == ("team1", "canceled")
+    assert sub["canceledAt"] is not None
     inv = body["invoices"][0]
     assert (inv["number"], inv["amountPaid"], inv["currency"]) == ("F-001", 500, "EUR")
     assert inv["pdfUrl"].endswith(".pdf")
 
 
+@override_settings(**BILLING_ON)
 @pytest.mark.django_db
-def test_a_stripe_failure_degrades_instead_of_500(client, user, monkeypatch):
-    """The page must still render if Stripe is unreachable."""
-    Subscription.objects.create(user=user, stripe_customer_id="cus_1")
-    monkeypatch.setattr("billing.api_views.stripe_client", lambda: _FakeStripe(raises=True))
-
-    resp = client.get("/api/billing/history/")
+def test_an_unreachable_central_degrades_instead_of_500(client):
+    """La page doit s'afficher même si le central est indisponible."""
+    with patch("billing.client.get", side_effect=BillingUnavailable("timeout")):
+        resp = client.get("/api/billing/history/")
 
     assert resp.status_code == 200
     assert resp.json() == {"billingEnabled": True, "subscriptions": [], "invoices": []}
 
 
+@override_settings(**BILLING_ON)
 @pytest.mark.django_db
-def test_another_users_history_is_never_returned(client, monkeypatch):
-    """The customer id comes from the authenticated user, never from the request."""
+def test_the_queried_identity_comes_from_the_authenticated_user(client, user):
+    """Jamais de la requête : sinon n'importe qui lirait l'historique d'un autre."""
     other = User.objects.create_user(email="other@example.com", password="pw12345678")
-    Subscription.objects.create(user=other, stripe_customer_id="cus_other")
-    fake = _FakeStripe(invoices=[{"id": "in_x", "number": "SECRET", "created": 1}])
-    monkeypatch.setattr("billing.api_views.stripe_client", lambda: fake)
 
-    # The caller has no subscription of their own → nothing, despite Stripe having data.
-    assert client.get("/api/billing/history/").json()["invoices"] == []
+    with patch("billing.client.get", return_value={"subscriptions": [], "invoices": []}) as called:
+        client.get(f"/api/billing/history/?external_user_id={other.id}")
+
+    path = called.call_args.args[0]
+    assert f"external_user_id={user.id}" in path
+    assert str(other.id) not in path.split("external_user_id=")[1]

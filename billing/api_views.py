@@ -1,11 +1,16 @@
-"""Stripe billing endpoints (P2.7), account-level. Checkout/portal/status are per-user;
-the webhook is public but Stripe-signature verified. Inert until Stripe is configured."""
-import logging
-from datetime import datetime
+"""Endpoints de facturation, désormais adossés au service central.
 
-from django.conf import settings
-from django.contrib.auth import get_user_model
+Poker ne parle plus à Stripe : il relaie vers billing-api.foxugly.com, signé en
+HMAC, et reçoit en retour des droits poussés qu'il met en cache localement.
+
+Le contrat exposé au SPA est **inchangé** : mêmes routes, mêmes formes de réponse.
+C'était l'objectif — migrer l'infrastructure sans toucher au frontend d'un site
+en production.
+"""
+import logging
+
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,24 +18,26 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 from teams.models import Team
 
-from .models import Subscription
-from .service import (
-    billing_configured,
-    plan_for_price,
-    price_for,
-    stripe_client,
-    user_is_paid,
-    user_quota,
-)
+from . import client
+from .models import DeliveryReceipt, Subscription
+from .service import billing_configured, user_is_paid, user_quota
 
 logger = logging.getLogger("poker")
-User = get_user_model()
 
 
-def _iso(epoch):
-    if not epoch:
-        return None
-    return datetime.fromtimestamp(epoch, tz=timezone.get_current_timezone()).isoformat()
+def _unconfigured():
+    return error_response(
+        code="billing_unconfigured", detail="Billing is not enabled.", http_status=503
+    )
+
+
+def _unavailable():
+    """Le central est branché mais injoignable : 503 explicite, jamais une 500."""
+    return error_response(
+        code="billing_unavailable",
+        detail="Le service de facturation est momentanément indisponible.",
+        http_status=503,
+    )
 
 
 def _sub_for(user):
@@ -38,88 +45,76 @@ def _sub_for(user):
     return sub
 
 
-def _sync_from_stripe(user, stripe_sub) -> None:
-    """Persist a Stripe subscription's state onto the user's Subscription row."""
-    sub = _sub_for(user)
-    sub.stripe_subscription_id = stripe_sub.get("id", "") or ""
-    sub.status = stripe_sub.get("status", "") or ""
-    customer = stripe_sub.get("customer")
-    if customer:
-        sub.stripe_customer_id = customer
-    end = stripe_sub.get("current_period_end")
-    sub.current_period_end = (
-        datetime.fromtimestamp(end, tz=timezone.get_current_timezone()) if end else None
-    )
-    # Plan/interval from the subscription's price.
-    try:
-        price_id = stripe_sub["items"]["data"][0]["price"]["id"]
-    except (KeyError, IndexError, TypeError):
-        price_id = ""
-    plan, interval = plan_for_price(price_id)
-    if plan:
-        sub.plan, sub.interval = plan, interval
-    sub.save()
-
-
 class CheckoutView(APIView):
-    """POST {plan, interval} → a Stripe Checkout Session URL to subscribe the account."""
+    """POST {plan, interval} → l'URL d'une session Stripe Checkout, via le central."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        stripe = stripe_client()
-        if stripe is None:
-            return error_response(code="billing_unconfigured", detail="Billing is not enabled.", http_status=503)
-        plan = request.data.get("plan")
-        interval = request.data.get("interval")
-        price_id = price_for(plan, interval)
-        if not price_id:
-            return error_response(code="unknown_plan", detail="Unknown plan or interval.", http_status=400)
+        if not billing_configured():
+            return _unconfigured()
 
-        sub = _sub_for(request.user)
-        base = settings.FRONTEND_BASE_URL.rstrip("/")
-        params = {
-            "mode": "subscription",
-            "line_items": [{"price": price_id, "quantity": 1}],
-            "client_reference_id": str(request.user.id),
-            "metadata": {"user_id": str(request.user.id), "plan": plan},
-            "success_url": f"{base}/teams?billing=success",
-            "cancel_url": f"{base}/teams?billing=cancel",
-        }
-        if sub.stripe_customer_id:
-            params["customer"] = sub.stripe_customer_id
-        else:
-            params["customer_email"] = request.user.email
-        session = stripe.checkout.Session.create(**params)
-        return Response({"url": session.url})
+        base = request.build_absolute_uri("/")  # non utilisé : le SPA a sa propre URL
+        from django.conf import settings
+
+        front = settings.FRONTEND_BASE_URL.rstrip("/")
+        try:
+            data = client.post(
+                "checkout/",
+                {
+                    "external_user_id": str(request.user.id),
+                    "email": request.user.email,
+                    "plan": request.data.get("plan"),
+                    "interval": request.data.get("interval"),
+                    "success_url": f"{front}/teams?billing=success",
+                    "cancel_url": f"{front}/teams?billing=cancel",
+                },
+            )
+        except client.BillingUnavailable:
+            return _unavailable()
+        return Response({"url": data.get("url", "")})
 
 
 class PortalView(APIView):
-    """POST → a Stripe billing-portal URL to manage/cancel the subscription."""
+    """POST → l'URL du portail client Stripe, via le central."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        stripe = stripe_client()
-        if stripe is None:
-            return error_response(code="billing_unconfigured", detail="Billing is not enabled.", http_status=503)
-        sub = _sub_for(request.user)
-        if not sub.stripe_customer_id:
-            return error_response(code="no_customer", detail="No subscription to manage.", http_status=400)
-        base = settings.FRONTEND_BASE_URL.rstrip("/")
-        session = stripe.billing_portal.Session.create(customer=sub.stripe_customer_id, return_url=f"{base}/teams")
-        return Response({"url": session.url})
+        if not billing_configured():
+            return _unconfigured()
+
+        from django.conf import settings
+
+        front = settings.FRONTEND_BASE_URL.rstrip("/")
+        try:
+            data = client.post(
+                "portal/",
+                {"external_user_id": str(request.user.id), "return_url": f"{front}/teams"},
+            )
+        except client.BillingUnavailable:
+            return _unavailable()
+        return Response({"url": data.get("url", "")})
 
 
 class SubscriptionView(APIView):
-    """GET the account's billing status (used by the SPA to show plans / quota)."""
+    """État de facturation du compte (le SPA s'en sert pour afficher plans et quota).
+
+    Servi depuis le cache local : aucun appel réseau, donc la page reste rapide et
+    s'affiche même si le central est indisponible.
+
+    Exception : au retour du Checkout (`?refresh=1`), on interroge le central en
+    synchrone. Sinon l'utilisateur qui revient de Stripe avant l'arrivée du webhook
+    verrait « aucun abonnement » juste après avoir payé (§6.5).
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        if request.query_params.get("refresh") and billing_configured():
+            self._pull(request.user)
+
         sub = getattr(request.user, "subscription", None)
-        quota = user_quota(request.user)
-        teams_used = Team.objects.filter(owner=request.user).count()
         return Response(
             {
                 "billingEnabled": billing_configured(),
@@ -128,109 +123,132 @@ class SubscriptionView(APIView):
                 "status": sub.status if sub else "",
                 "plan": sub.plan if sub else "",
                 "interval": sub.interval if sub else "",
-                "quota": quota,
-                "teamsUsed": teams_used,
+                "quota": user_quota(request.user),
+                "teamsUsed": Team.objects.filter(owner=request.user).count(),
                 "canManage": bool(sub and sub.stripe_customer_id),
             }
         )
 
+    def _pull(self, user):
+        from django.conf import settings
+
+        try:
+            payload = client.get(f"entitlements/{settings.BILLING_APP_SLUG}/{user.id}/")
+        except client.BillingUnavailable:
+            # Le push finira par arriver : on sert le cache plutôt que d'échouer.
+            return
+        apply_entitlement(user, payload)
+
 
 class BillingHistoryView(APIView):
-    """Past + current subscriptions and their invoices, read live from Stripe.
+    """Abonnements passés et factures, relayés depuis le central.
 
-    Deliberately NOT mirrored in our database: Stripe is the system of record for
-    money, and a local copy would only add a reconciliation problem for data we
-    never query on. The invoice links are Stripe-hosted (signed, long-lived).
-
-    Degrades to empty lists rather than erroring, so the page renders when billing
-    is off or Stripe is briefly unreachable.
+    Se dégrade en listes vides plutôt qu'en erreur : la page doit s'afficher même
+    si la facturation est coupée ou le central injoignable.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        sub = getattr(request.user, "subscription", None)
-        customer_id = sub.stripe_customer_id if sub else ""
-        stripe = stripe_client()
-        if stripe is None or not customer_id:
-            return Response({"billingEnabled": billing_configured(), "subscriptions": [], "invoices": []})
+        if not billing_configured():
+            return Response({"billingEnabled": False, "subscriptions": [], "invoices": []})
 
-        subscriptions, invoices = [], []
         try:
-            for s in stripe.Subscription.list(customer=customer_id, status="all", limit=100).get("data", []):
-                try:
-                    price_id = s["items"]["data"][0]["price"]["id"]
-                except (KeyError, IndexError, TypeError):
-                    price_id = ""
-                plan, interval = plan_for_price(price_id)
-                subscriptions.append(
-                    {
-                        "id": s.get("id", ""),
-                        "status": s.get("status", ""),
-                        "plan": plan or "",
-                        "interval": interval or "",
-                        "startedAt": _iso(s.get("start_date")),
-                        "currentPeriodEnd": _iso(s.get("current_period_end")),
-                        "canceledAt": _iso(s.get("canceled_at")),
-                    }
-                )
-            for inv in stripe.Invoice.list(customer=customer_id, limit=100).get("data", []):
-                invoices.append(
-                    {
-                        "id": inv.get("id", ""),
-                        "number": inv.get("number") or "",
-                        "status": inv.get("status", ""),
-                        "amountPaid": inv.get("amount_paid", 0),   # cents
-                        "currency": (inv.get("currency") or "").upper(),
-                        "createdAt": _iso(inv.get("created")),
-                        "hostedUrl": inv.get("hosted_invoice_url") or "",
-                        "pdfUrl": inv.get("invoice_pdf") or "",
-                    }
-                )
-        except Exception:
-            # Never break the page on a Stripe hiccup — log and show what we have.
-            logger.exception("billing_history_failed")
+            data = client.get(f"history/?external_user_id={request.user.id}")
+        except client.BillingUnavailable:
+            return Response({"billingEnabled": True, "subscriptions": [], "invoices": []})
 
+        subscriptions = [
+            {
+                "id": s.get("id", ""),
+                "status": s.get("status", ""),
+                "plan": s.get("plan", ""),
+                "interval": s.get("interval", ""),
+                "startedAt": s.get("started_at"),
+                "currentPeriodEnd": s.get("current_period_end"),
+                "canceledAt": s.get("canceled_at"),
+            }
+            for s in data.get("subscriptions", [])
+        ]
+        invoices = [
+            {
+                "id": i.get("id", ""),
+                "number": i.get("number", ""),
+                "status": i.get("status", ""),
+                "amountPaid": i.get("amount_paid", 0),
+                "currency": i.get("currency", ""),
+                "createdAt": i.get("created"),
+                "hostedUrl": i.get("hosted_invoice_url", ""),
+                "pdfUrl": i.get("invoice_pdf", ""),
+            }
+            for i in data.get("invoices", [])
+        ]
         return Response({"billingEnabled": True, "subscriptions": subscriptions, "invoices": invoices})
 
 
-class WebhookView(APIView):
-    """Stripe webhook: signature-verified, keeps the account subscription in sync."""
+def apply_entitlement(user, payload: dict) -> Subscription:
+    """Écrit un droit reçu du central dans le cache local."""
+    sub = _sub_for(user)
+    sub.is_paid = bool(payload.get("is_paid"))
+    sub.status = payload.get("status") or ""
+    sub.plan = payload.get("plan") or ""
+    sub.interval = payload.get("interval") or ""
+    sub.quotas = payload.get("quotas") or {}
+    period_end = payload.get("current_period_end")
+    sub.current_period_end = parse_datetime(period_end) if period_end else None
+    grace = payload.get("grace_until")
+    sub.grace_until = parse_datetime(grace) if grace else None
+    customer_id = payload.get("stripe_customer_id") or ""
+    if customer_id:
+        sub.stripe_customer_id = customer_id
+    sub.save()
+    return sub
+
+
+class EntitlementView(APIView):
+    """Reçoit un droit poussé par le central. Remplace l'ancien webhook Stripe.
+
+    Signature HMAC obligatoire. L'idempotence repose sur le `delivery_id` : le
+    central rejoue volontiers (reprise, rejeu manuel, réconciliation), et un rejeu
+    tardif ne doit pas réappliquer un état périmé.
+    """
 
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        stripe = stripe_client()
-        if stripe is None:
+        if not billing_configured():
             return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        sig = request.META.get("HTTP_STRIPE_SIGNATURE", "")
-        try:
-            event = stripe.Webhook.construct_event(request.body, sig, settings.STRIPE_WEBHOOK_SECRET)
-        except Exception:  # invalid payload or signature
-            return Response(status=status.HTTP_400_BAD_REQUEST)
 
-        etype = event["type"]
-        obj = event["data"]["object"]
-        user = self._resolve_user(obj)
+        meta = request.META
+        if not client.verify_inbound(
+            request.body,
+            meta.get("HTTP_X_FOXUGLY_TIMESTAMP", ""),
+            meta.get("HTTP_X_FOXUGLY_SIGNATURE", ""),
+        ):
+            logger.warning("entitlement_bad_signature")
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+        payload = request.data
+        delivery_id = payload.get("delivery_id")
+        if not delivery_id:
+            return error_response(code="missing_delivery_id", detail="delivery_id requis.", http_status=400)
+
+        if DeliveryReceipt.objects.filter(pk=delivery_id).exists():
+            # 409 : le central compte cette réponse comme une livraison réussie.
+            return Response(status=status.HTTP_409_CONFLICT)
+
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(pk=payload.get("external_user_id")).first()
         if user is None:
+            # Utilisateur supprimé côté Poker : on accuse réception pour que le
+            # central cesse de réessayer indéfiniment.
+            DeliveryReceipt.objects.create(pk=delivery_id)
+            logger.info("entitlement_unknown_user", extra={"id": payload.get("external_user_id")})
             return Response(status=status.HTTP_200_OK)
 
-        if etype == "checkout.session.completed":
-            sub_id = obj.get("subscription")
-            if sub_id:
-                _sync_from_stripe(user, stripe.Subscription.retrieve(sub_id))
-        elif etype in ("customer.subscription.updated", "customer.subscription.deleted"):
-            _sync_from_stripe(user, obj)
-        logger.info("stripe_webhook", extra={"type": etype, "user_id": user.id})
+        apply_entitlement(user, payload)
+        DeliveryReceipt.objects.create(pk=delivery_id)
+        logger.info("entitlement_applied", extra={"user_id": user.id, "is_paid": payload.get("is_paid")})
         return Response(status=status.HTTP_200_OK)
-
-    def _resolve_user(self, obj):
-        uid = (obj.get("metadata") or {}).get("user_id") or obj.get("client_reference_id")
-        if uid:
-            return User.objects.filter(pk=uid).first()
-        customer = obj.get("customer")
-        if customer:
-            sub = Subscription.objects.filter(stripe_customer_id=customer).select_related("user").first()
-            return sub.user if sub else None
-        return None
