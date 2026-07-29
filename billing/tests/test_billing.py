@@ -474,17 +474,14 @@ def test_a_refused_history_still_renders_the_page(owner):
 
 @override_settings(**BILLING_ON)
 @pytest.mark.django_db
-def test_the_old_prefix_still_reaches_the_api_during_the_transition(owner):
-    """Backends et frontends se deploient separement : sans alias, un bundle
-    encore en cache prendrait un 404 pendant la fenetre de bascule."""
-    assert _client(owner).get("/api/billing/subscription/").status_code == 200
+def test_the_api_lives_only_under_the_canonical_prefix(owner):
+    """L'alias transitoire /api/ -> /api/v1/ a ete retire (OPERATIONS.md 3.18).
 
-
-@override_settings(**BILLING_ON)
-@pytest.mark.django_db
-def test_the_alias_never_rewrites_a_path_already_canonical(owner):
-    """Sinon /api/v1/... deviendrait /api/v1/v1/... -- l'API entiere disparaitrait."""
+    Il ne couvrait que la fenetre de bascule, le temps qu'un bundle encore en
+    cache cesse d'appeler l'ancien chemin.
+    """
     assert _client(owner).get("/api/v1/billing/subscription/").status_code == 200
+    assert _client(owner).get("/api/billing/subscription/").status_code == 404
     assert _client(owner).get("/api/v1/v1/billing/subscription/").status_code == 404
 
 
@@ -502,13 +499,13 @@ def test_a_signed_push_on_the_canonical_path_is_accepted(owner):
 @override_settings(**BILLING_ON)
 @pytest.mark.django_db
 def test_a_signed_push_on_the_legacy_path_is_refused(owner):
-    """L'alias ne rattrape PAS un appel signe sur l'ancien chemin, et c'est
-    voulu : la signature couvre le chemin, la reecriture le change, donc la
-    verification compare deux chemins differents.
+    """L'ancien chemin n'existe plus : l'alias transitoire a ete retire.
 
-    D'ou la consequence operationnelle : `App.entitlement_path` du central DOIT
-    pointer sur /api/v1/billing/entitlement/. Ce test epingle le piege plutot
-    que de le laisser se decouvrir en production.
+    Tant qu'il existait, un push signe sur l'ancien chemin etait refuse en 401 --
+    la signature couvre le chemin, la reecriture le changeait, donc la
+    verification comparait deux chemins differents. La consequence operationnelle
+    tient toujours : `App.entitlement_path` du central DOIT pointer sur
+    /api/v1/billing/entitlement/, sans quoi le push tombe desormais en 404.
     """
     payload = _payload(owner)
     body = json.dumps(payload).encode()
@@ -524,7 +521,7 @@ def test_a_signed_push_on_the_legacy_path_is_refused(owner):
         HTTP_X_FOXUGLY_SIGNATURE=signature,
     )
 
-    assert r.status_code == 401
+    assert r.status_code == 404
 
 
 @override_settings(**BILLING_ON)
