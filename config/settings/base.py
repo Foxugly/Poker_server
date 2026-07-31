@@ -271,12 +271,23 @@ _SENTRY_PROD_ACTIVE = (
     or STATE.strip().upper() == "PROD"
 )
 SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
+# L'etiquette et la garde doivent decouler de la MEME valeur. Elles divergeaient :
+# la garde acceptait `DJANGO_ENV=prod` OU `STATE=PROD`, mais l'etiquette valait
+# `STATE`. Un poste local avec DJANGO_ENV=prod et STATE=DEV passait donc la garde
+# et envoyait dans le projet Sentry DE PRODUCTION des evenements etiquetes DEV
+# (constate le 2026-07-31 sur pushit : 33 occurrences depuis juin).
+#
+# En exigeant que l'etiquette resolue soit elle-meme un marqueur de production,
+# emettre un evenement etiquete autrement devient impossible. Production
+# inchangee : STATE=PROD est bien pose dans /run/<app>/.env.
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="") or STATE
+_SENTRY_ENV_IS_PROD = SENTRY_ENVIRONMENT.strip().upper() in {"PROD", "PRODUCTION"}
+if SENTRY_DSN and _SENTRY_PROD_ACTIVE and _SENTRY_ENV_IS_PROD:
     import sentry_sdk
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        environment=env("SENTRY_ENVIRONMENT", default=STATE),
+        environment=SENTRY_ENVIRONMENT,
         release=env("SENTRY_RELEASE", default=None),
         traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
         profiles_sample_rate=env.float("SENTRY_PROFILES_SAMPLE_RATE", default=0.0),
