@@ -19,8 +19,8 @@ from decks.selection import (
     DELEGATION_POKER_CODE,
     card_back_for_team,
     decks_for_team,
-    free_card_back_by_id,
-    free_decks_by_ids,
+    free_decks,
+    imposed_free_card_back,
     felt_for_team,
 )
 from teams.models import Team
@@ -71,14 +71,14 @@ class CreateRoomView(APIView):
 
         # Every poker type playable in this room, frozen for its whole life; the
         # facilitator switches between them round by round. A team room takes the
-        # team's enabled decks; an account-less room takes what the caller picked
-        # from the free catalogue (no Team to persist it on).
+        # team's enabled decks; an account-less room takes the whole free catalogue
+        # and an imposed back — elle ne choisit rien a la creation.
         if team is not None:
             decks = decks_for_team(team)
             card_back = card_back_for_team(team)
         else:
-            decks = free_decks_by_ids(data.get("deck_ids"))
-            card_back = free_card_back_by_id(data.get("card_back_id"))
+            decks = free_decks()
+            card_back = imposed_free_card_back()
         if not decks:
             return Response({"detail": "No standard deck configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
