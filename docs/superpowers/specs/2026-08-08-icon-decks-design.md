@@ -33,8 +33,10 @@ couches de texte, et le composant carte écrase délibérément la police porté
 
 ## 3. Référentiel ajouté
 
-Peuplé par une commande de gestion calquée sur `seed_delegation_deck`, idempotente
-(elle s'abstient si le deck standard du type existe déjà).
+Peuplé par **une seule commande de gestion** calquée sur `seed_delegation_deck`,
+`seed_icon_decks`, qui crée les deux decks. Elle est **idempotente type par type** :
+chaque deck est ignoré séparément si son `VoteType` a déjà un deck standard, de sorte
+qu'une exécution partielle puisse être relancée sans effet de bord.
 
 | | Fist of Five | Vote romain |
 |---|---|---|
@@ -48,7 +50,31 @@ Peuplé par une commande de gestion calquée sur `seed_delegation_deck`, idempot
 | Clés d'icône | `fist-0` … `fist-5` | `thumb-up`, `thumb-side`, `thumb-down` |
 
 `Deck.name` (champ parler) est traduit en 5 langues — seul texte à rédiger, inévitable
-puisqu'il s'affiche dans le sélecteur de type de poker.
+puisqu'il s'affiche dans le sélecteur de type de poker. `Deck.card_back_image` est un champ
+obligatoire : les deux decks reprennent le dos par défaut existant, `decks/backs/back.webp`
+(il n'est de toute façon utilisé qu'à défaut de dos choisi par l'équipe).
+
+### Cartes, en détail
+
+`Card.slug` et `Card.order` sont requis, et `order` est unique par deck. Valeurs retenues :
+
+| Deck | `value` | `slug` | `order` | clé d'icône |
+|---|---|---|---|---|
+| Fist of Five | `0` | `fist-0` | 0 | `fist-0` |
+| | `1` | `fist-1` | 1 | `fist-1` |
+| | `2` | `fist-2` | 2 | `fist-2` |
+| | `3` | `fist-3` | 3 | `fist-3` |
+| | `4` | `fist-4` | 4 | `fist-4` |
+| | `5` | `fist-5` | 5 | `fist-5` |
+| Vote romain | `+1` | `thumb-up` | 1 | `thumb-up` |
+| | `0` | `thumb-side` | 2 | `thumb-side` |
+| | `-1` | `thumb-down` | 3 | `thumb-down` |
+
+L'ordre décroissant du vote romain (pour → neutre → contre) est délibéré : c'est celui dans
+lequel la main s'affiche, et il place le vote favorable à gauche comme sur les autres decks.
+
+Chaque carte porte **une unique couche** `icon`, plein cadre : `pos_x=50`, `pos_y=50`,
+`font_size=55` (55 % de la hauteur de carte), `color=#ffffff`, `order=1`.
 
 ### Pourquoi ces valeurs de carte
 
@@ -68,10 +94,14 @@ verbales (`up` / `neutral` / `down`) auraient fui en anglais dans ces quatre sur
 
 ## 4. La couche `icon`
 
-`TextLayerKind` gagne une troisième valeur, `icon`. La couche **réutilise tous les champs
-existants** — `pos_x`, `pos_y`, `font_size` (taille en `cqh`), `color`, `align` — et son
-`content` porte la clé d'icône au lieu d'une prose. Aucun champ nouveau ; la migration
-n'ajoute qu'un choix.
+`TextLayerKind` gagne une troisième valeur, `icon`. La couche **réutilise les champs
+existants** — `pos_x`, `pos_y`, `font_size` (taille en `cqh`), `color` — et son `content`
+porte la clé d'icône au lieu d'une prose. Aucun champ nouveau ; la migration n'ajoute
+qu'un choix.
+
+Deux champs deviennent sans objet sur une couche `icon` et sont **ignorés** au rendu :
+`align`, qui n'a de sens que pour du texte (le SVG est centré sur `pos_x`/`pos_y` comme
+l'est aujourd'hui un `<span>`), et `font_family`, qu'aucune icône n'utilise.
 
 **Point de vigilance.** `_layer_text()` (`rooms/snapshot.py:21`) transforme aujourd'hui toute
 couche non-`static` en dictionnaire par langue. Une couche `icon` doit être traitée **comme
