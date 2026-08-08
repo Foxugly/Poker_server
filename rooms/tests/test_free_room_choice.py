@@ -32,16 +32,18 @@ def client():
 
 
 @pytest.mark.django_db
-def test_catalogue_is_public_and_lists_only_the_free_subset(client, standard_deck):
+def test_only_the_free_subset_is_offered_to_an_account_less_room(standard_deck):
+    """La distinction qui compte est ``free_tier``, non ``is_standard`` : le premier
+    dit qui a droit au deck, le second d'ou il vient."""
+    from decks.selection import free_decks
+
     paid_only = _extra_deck(standard_deck.vote_type, free_tier=False, name="Paid only")
     free_extra = _extra_deck(standard_deck.vote_type, free_tier=True, name="Free extra")
 
-    resp = client.get("/api/v1/decks/catalogue/")
+    offerts = {d.pk for d in free_decks()}
 
-    assert resp.status_code == 200  # no auth required
-    ids = [d["id"] for d in resp.json()["decks"]]
-    assert free_extra.pk in ids
-    assert paid_only.pk not in ids
+    assert free_extra.pk in offerts
+    assert paid_only.pk not in offerts
 
 
 @pytest.mark.django_db
@@ -139,13 +141,15 @@ def test_an_empty_catalogue_falls_back_to_the_deck_own_back(client, standard_dec
 
 
 @pytest.mark.django_db
-def test_a_free_tier_custom_back_is_offered(client, standard_deck):
+def test_a_free_tier_custom_back_can_be_imposed(client, standard_deck):
     """Meme regle pilotable en admin que pour les decks : free_tier + actif suffit —
-    un dos custom (non standard) peut etre promu dans l'offre gratuite."""
-    back = CardBack.objects.create(
+    un dos custom (non standard) peut etre promu dans l'offre gratuite, et donc
+    servir de dos impose. ``is_standard`` n'est pas requis ici."""
+    CardBack.objects.create(
         is_standard=False, free_tier=True, image="decks/backs/custom.webp", name="Custom free"
     )
 
-    resp = client.get("/api/v1/decks/catalogue/")
+    resp = client.post("/api/v1/rooms", {"title": "Retro", "username": "Alex"}, format="json")
 
-    assert back.pk in [b["id"] for b in resp.json()["card_backs"]]
+    assert resp.status_code == 201
+    assert resp.json()["deckSnapshot"]["cardBack"]["image"].endswith("custom.webp")

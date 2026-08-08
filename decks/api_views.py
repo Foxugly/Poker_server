@@ -1,10 +1,12 @@
-"""Public deck catalogue for account-less rooms + custom image uploads.
+"""Televersements d'images du referentiel (dos de cartes, tapis).
 
-An anonymous room has no Team to hold its choices, so it picks at creation time
-and the choice is frozen in the room's snapshots — FreeCatalogueView feeds that.
+Une entree televersee appartient a son auteur (``uploaded_by``) et devient visible
+par ses squads (``decks.selection``). Le catalogue d'une equipe est servi par
+l'app ``teams``.
 
-Uploads (card backs, felts) are owned by the uploading user and become visible to
-their squads (decks.selection). A team's own catalogue endpoint lives in `teams`.
+Il n'y a plus de catalogue public : une salle sans compte ne choisit rien a la
+creation — elle porte tout le catalogue gratuit, change de type de poker en salle,
+et son dos est impose. Plus rien a lui presenter, donc.
 """
 from django.core.exceptions import ValidationError
 from rest_framework import permissions, status
@@ -15,26 +17,9 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 
 from .models import CardBack, Felt
-from .selection import available_card_backs, available_decks, can_upload
-from .serializers import CardBackSerializer, DeckSerializer, FeltSerializer
+from .selection import can_upload
+from .serializers import CardBackSerializer, FeltSerializer
 from .validators import validate_image_upload
-
-
-class FreeCatalogueView(APIView):
-    """The decks and card backs offered to a room without an account."""
-
-    permission_classes = [permissions.AllowAny]
-    authentication_classes = []
-
-    def get(self, request):
-        decks = available_decks(None).prefetch_related("cards", "translations")
-        backs = available_card_backs(None)
-        return Response(
-            {
-                "decks": DeckSerializer(decks, many=True).data,
-                "card_backs": CardBackSerializer(backs, many=True).data,
-            }
-        )
 
 
 class _UploadView(APIView):
