@@ -60,6 +60,11 @@ def create_standard_deck():
 SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
 SHARED_CARD_BACK = "decks/backs/back.webp"
 
+# Le fond partage est un eclat pastel tres CLAIR au centre (quasi blanc), borde de
+# noir. Un pictogramme blanc y serait invisible — d'ou un quasi-noir, qui reprend la
+# bordure de la carte. A revoir si le fond change pour une illustration sombre.
+ICON_COLOR = "#111111"
+
 # (valeur, slug, ordre, cle d'icone)
 FIST_OF_FIVE_CARDS = [
     ("0", "fist-0", 0, "fist-0"),
@@ -105,7 +110,7 @@ def _create_icon_deck(vote_type_code, resolution_strategy, names, cards):
         )
         layer = TextLayer.objects.create(
             card=card, order=1, pos_x=50, pos_y=50, font_size=55,
-            color="#ffffff", content_kind=TextLayerKind.ICON,
+            color=ICON_COLOR, content_kind=TextLayerKind.ICON,
         )
         layer.set_current_language("en")
         layer.content = icon_key

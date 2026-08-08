@@ -45,6 +45,19 @@ def test_both_decks_are_reserved_to_paid_teams():
 
 
 @pytest.mark.django_db
+def test_icons_are_dark_enough_for_the_light_card_front():
+    """Le fond partage est un eclat pastel quasi blanc en son centre : un pictogramme
+    clair y serait invisible. Aucun test visuel ne rattraperait ca, et le defaut ne se
+    verrait qu'en salle — d'ou ce garde-fou sur la luminance de la couleur semee."""
+    for deck in (create_fist_of_five_deck(), create_roman_vote_deck()):
+        for card in deck.cards.all():
+            color = card.layers.first().color
+            r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+            luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            assert luminance < 128, f"{card.slug}: {color} est trop clair pour ce fond"
+
+
+@pytest.mark.django_db
 def test_roman_values_survive_into_the_snapshot():
     """Le « + » de « +1 » ne doit etre ni perdu ni normalise : c'est la valeur canonique
     stockee dans Vote.card_value et Result.chosen_value. `act_result` la validera par

@@ -692,19 +692,24 @@ qu'un `@switch` placé *à l'intérieur* d'un `<svg>` ne garantirait pas.
 > retenu. Recopier des coordonnées dans ce plan ne ferait que créer une troisième version
 > divergente : `card-icon.component.ts` fait foi.
 >
-> Ce qui reste vrai du principe : **le jeu est volontairement mixte.** Les mains du Fist of
-> Five sont **au trait** (contour d'épaisseur 5, bouts arrondis) ; les pouces du vote romain
-> sont **en aplat**. Chaque traitement est le meilleur pour son deck, et une salle ne joue
-> qu'un deck à la fois — les deux jeux ne se croisent qu'au sélecteur de decks d'une équipe.
-> Conséquence : les attributs de rendu sont portés par chaque `<svg>` et non par une règle
-> CSS commune, ce qu'un test verrouille.
+> **État final : le jeu emploie deux techniques.** Les six mains du Fist of Five sont les
+> **images fournies par Renaud** (`Poker_frontend/public/card-icons/fist-N.png`), affichées
+> comme **masque CSS rempli en `currentColor`** — jamais comme `<img>`. Le dessin d'origine
+> est noir sur fond transparent : posé tel quel il serait insensible au thème d'équipe, et
+> invisible sur un fond sombre. Le masque règle les deux d'un coup. Les trois pouces du vote
+> romain sont les tracés **PrimeIcons** (`thumbs-up`, `thumbs-down`), repris depuis
+> `primeicons/raw-svg` — déjà une dépendance du projet, donc aucun paquet à ajouter, et sous
+> licence MIT. Ils sont au trait comme les mains, là où les pouces en aplat dessinés
+> auparavant détonnaient à côté d'elles. PrimeIcons n'ayant pas de pouce horizontal, le
+> **neutre** est le pouce levé pivoté d'un quart de tour : même dessin, style homogène.
 >
-> Fist of Five : une paume ouverte surmontée de quatre doigts en U inversé, un doigt non levé
-> restant présent **replié en phalange** — c'est ce qui fait lire une main plutôt que des
-> barres, et ce qui donne au `fist-0` un vrai poing. Les doigts se lèvent de l'index vers
-> l'auriculaire, donc aucune combinaison ne produit de geste malencontreux. Le pouce du `5`
-> sort à l'horizontale. Vote romain : pouce dressé plus trois doigts repliés, décliné en
-> trois orientations (neutre = quart de tour, contre = miroir vertical et non rotation).
+> Les deux jeux ne se croisent qu'au sélecteur de decks d'une équipe, une salle ne jouant
+> qu'un deck à la fois — la différence de traitement ne se voit donc pas en partie.
+>
+> **Couleur des pictogrammes : `#111111`, pas blanc.** Le fond partagé est un éclat pastel
+> quasi blanc en son centre ; un pictogramme clair y serait invisible. Un test backend
+> verrouille la luminance de la couleur semée, faute de quoi le défaut ne se verrait qu'en
+> salle.
 >
 > **Contrainte de licence à ne pas perdre de vue** : les tracés sont originaux. S'inspirer
 > d'un style est libre, reprendre les tracés d'un jeu d'icônes sous licence (Icons8 et
