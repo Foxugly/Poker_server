@@ -45,6 +45,35 @@ def _card_values(room):
     return [card["value"] for card in (snapshot or {}).get("cards", [])]
 
 
+# Principe P1 de la spec de modele de donnees : la DB decrit un type de vote, le code
+# decide du comportement. Seules ces strategies ont une echelle ordinale sur laquelle
+# un ecart min/max veut dire quelque chose.
+ORDINAL_RESOLUTION_STRATEGIES = frozenset({"delegation_v1", "fist_of_five_v1"})
+
+
+def _resolution_strategy(room):
+    """La strategie du deck actif — session en cours si elle porte un snapshot, sinon
+    celui de la salle. Meme regle de priorite que ``_card_values``."""
+    session = room.current_session
+    snapshot = (session.deck_snapshot if session and session.deck_snapshot else room.deck_snapshot)
+    return (snapshot or {}).get("resolutionStrategy", "")
+
+
+def _spread_for(strategy, card_values):
+    """Ecart min/max des votes, ou {None, None} si l'echelle n'est pas ordinale.
+
+    Sans ce garde-fou, un vote romain calculerait son ecart sur les seules valeurs
+    passant isdigit() : « +1 » et « -1 » echouent, « 0 » reussit, et l'ecran
+    afficherait « 0 - 0 » — un faux consensus — sous un vote pourtant partage.
+    """
+    if strategy not in ORDINAL_RESOLUTION_STRATEGIES:
+        return {"min": None, "max": None}
+    numeric = [int(v) for v in card_values if v.isdigit()]
+    if not numeric:
+        return {"min": None, "max": None}
+    return {"min": min(numeric), "max": max(numeric)}
+
+
 def resolve_participant(code, token):
     """token → participant (+ room). Returns None if unknown/expired (contract §3)."""
     participant = (
@@ -423,8 +452,7 @@ def revealed_payload(room):
         for value in _card_values(room)
         if counts.get(value)
     ]
-    numeric = [int(v.card_value) for v in votes if v.card_value.isdigit()]
-    spread = {"min": min(numeric), "max": max(numeric)} if numeric else {"min": None, "max": None}
+    spread = _spread_for(_resolution_strategy(room), [v.card_value for v in votes])
     payload = {"tally": tally, "spread": spread, "anonymous": bool(session and session.is_anonymous)}
     if not (session and session.is_anonymous):
         by_participant = {v.participant_id: v.card_value for v in votes}
