@@ -38,6 +38,9 @@ def duplicate_card(card):
             color=layer.color,
             align=layer.align,
             content_kind=layer.content_kind,
+            # Reference l'image, sans la re-televerser — comme background_image
+            # ci-dessus. L'oublier ferait perdre son pictogramme au double.
+            image=layer.image.name,
         )
         for tr in layer.translations.all():
             new_layer.translations.create(language_code=tr.language_code, content=tr.content)

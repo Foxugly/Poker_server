@@ -12,7 +12,7 @@ from parler.models import TranslatableModel, TranslatedFields
 class TextLayerKind(models.TextChoices):
     STATIC = "static", "Static (one value, all languages)"
     I18N = "i18n", "Translated (per-language)"
-    ICON = "icon", "Icon key (resolved by the client's icon registry)"
+    ICON = "icon", "Icon (draws the layer's uploaded image)"
 
 
 class LayerAlign(models.TextChoices):
@@ -138,9 +138,15 @@ class Card(models.Model):
 
 
 class TextLayer(TranslatableModel):
-    """N overlaid text layers per card (spec §3.4). Position/size in % (responsive);
+    """N overlaid layers per card (spec §3.4). Position/size in % (responsive);
     ``content`` is a translated field — a ``static`` layer stores only the fallback
-    (EN) row and parler serves it everywhere; an ``i18n`` layer stores N rows."""
+    (EN) row and parler serves it everywhere; an ``i18n`` layer stores N rows.
+
+    An ``icon`` layer draws ``image`` instead of text. The image is data like every
+    other visual of this app (card fronts, backs, felts): adding a pictogram is an
+    upload, never a frontend release. The client paints it as a mask filled with
+    ``color``, so a pictogram follows a team's palette instead of carrying its own.
+    """
 
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="layers")
     order = models.PositiveSmallIntegerField(default=1)
@@ -152,9 +158,13 @@ class TextLayer(TranslatableModel):
     color = models.CharField(max_length=9, default="#ffffff")  # #RRGGBB[AA]
     align = models.CharField(max_length=6, choices=LayerAlign.choices, default=LayerAlign.CENTER)
     content_kind = models.CharField(max_length=6, choices=TextLayerKind.choices, default=TextLayerKind.I18N)
+    # Le pictogramme d'une couche ``icon``. Vide sur une couche de texte.
+    image = models.ImageField(upload_to="decks/icons/", blank=True)
 
     translations = TranslatedFields(
-        content=models.CharField(max_length=200),
+        # Vide sur une couche ``icon`` : celle-ci dessine son ``image``, et exiger
+        # un texte qui ne sera jamais rendu ne ferait qu'egarer l'admin.
+        content=models.CharField(max_length=200, blank=True),
     )
 
     class Meta:

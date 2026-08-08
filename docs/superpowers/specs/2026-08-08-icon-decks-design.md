@@ -94,30 +94,44 @@ verbales (`up` / `neutral` / `down`) auraient fui en anglais dans ces quatre sur
 
 ## 4. La couche `icon`
 
-`TextLayerKind` gagne une troisième valeur, `icon`. La couche **réutilise les champs
-existants** — `pos_x`, `pos_y`, `font_size` (taille en `cqh`), `color` — et son `content`
-porte la clé d'icône au lieu d'une prose. Aucun champ nouveau ; la migration n'ajoute
-qu'un choix.
+> **Révision du 2026-08-08, après mise en production.** La première version faisait porter à
+> `content` une **clé** (`fist-3`) que le frontend résolvait dans un registre codé en dur.
+> C'était une incohérence : ce module s'annonce « editable deck referential » et tout le reste
+> — fond de carte, dos, tapis, position, couleur, texte — est donnée modifiable en admin.
+> Seule l'icône était du code, si bien qu'ajouter un pictogramme imposait une livraison du
+> frontend, et qu'une clé inconnue saisie en admin produisait une **carte vide, sans le
+> moindre message**.
+>
+> Le pictogramme est désormais une **image portée par la couche** (`TextLayer.image`), comme
+> tous les autres visuels de l'application. Le registre et les clés en dur ont disparu.
+> Migration `0013_icon_key_to_image` : la clé valait exactement le nom du fichier, la
+> conversion est donc directe et réversible.
 
-Deux champs deviennent sans objet sur une couche `icon` et sont **ignorés** au rendu :
-`align`, qui n'a de sens que pour du texte (le SVG est centré sur `pos_x`/`pos_y` comme
-l'est aujourd'hui un `<span>`), et `font_family`, qu'aucune icône n'utilise.
+`TextLayerKind` gagne une troisième valeur, `icon`. La couche **réutilise les champs de
+positionnement existants** — `pos_x`, `pos_y`, `font_size` (taille en `cqh`), `color` — et
+gagne un champ `image` qui porte le pictogramme. Le snapshot émet son URL sous la clé `icon`.
 
-**Point de vigilance.** `_layer_text()` (`rooms/snapshot.py:21`) transforme aujourd'hui toute
-couche non-`static` en dictionnaire par langue. Une couche `icon` doit être traitée **comme
-une couche `static`** et sortir en chaîne simple : une clé d'icône ne se traduit pas.
+Trois champs deviennent sans objet sur une couche `icon` : `align` et `font_family`, qui
+n'ont de sens que pour du texte, et `content`, laissé **vide** — exiger un texte qui ne sera
+jamais rendu ne ferait qu'égarer l'admin.
 
 **Ce qui ne bouge pas.** `cardName()` (front) et `_level_name()` (back) cherchent strictement
 `kind == "i18n"`. Ils ignoreront donc les couches `icon` et retomberont sur la valeur brute
 de la carte — exactement le comportement voulu. Ces deux fonctions ne sont pas modifiées.
 
-## 5. Rendu — registre de pictogrammes
+## 5. Rendu — masque teinté
 
-Un module `shared/ui/card-icons/` associe chaque clé à un SVG inline (`viewBox` normalisé,
-`fill="currentColor"`). Le composant `delegation-card` branche sur le type de couche :
-`icon` → le SVG du registre, tout le reste → le `<span>` actuel, inchangé. Position, taille
-et couleur restent héritées de la couche, donc `currentColor` fait fonctionner la
-personnalisation de couleur par équipe sans traitement particulier.
+Le composant `shared/ui/card-icon/` peint l'image de la couche comme **masque CSS rempli en
+`currentColor`**, et jamais comme `<img>`. Deux raisons, pas une : les dessins sont noirs sur
+fond transparent et seraient invisibles sur une carte sombre ; et un raster ne sait pas
+hériter d'une couleur, donc sans le masque la personnalisation par équipe cesserait de
+fonctionner sur ces cartes. Le masque règle les deux — la forme vient du canal alpha de
+l'image, la couleur vient de la couche.
+
+`delegation-card` branche sur le type de couche : `icon` → le masque, tout le reste → le
+`<span>` inchangé. L'URL vient du snapshot, donc du référentiel : **ajouter un pictogramme
+est un téléversement en admin, jamais une livraison du frontend**. C'est le même chemin et
+le même niveau de confiance que l'image de fond d'une carte, déjà interpolée dans un style.
 
 ### Le jeu de 9 pictogrammes
 
