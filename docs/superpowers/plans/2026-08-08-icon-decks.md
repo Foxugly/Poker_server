@@ -564,6 +564,13 @@ et non des degres."
   composant `CardIconComponent` de sélecteur `app-card-icon`, entrée requise `name`.
   Consommés par la tâche 5.
 
+> **Correction apportée à l'exécution.** Les trois pouces étaient d'abord composés
+> d'une paume et d'une barre. Rendus dans un navigateur, ils ne se lisaient pas : les
+> deux rectangles se touchaient sans se chevaucher et l'œil voyait un « L ». Les tests
+> ne pouvaient pas l'attraper — ils vérifient que des `rect` existent, pas qu'ils
+> composent quelque chose de reconnaissable. La construction retenue est **une seule
+> main (pouce dressé + trois doigts repliés) déclinée en trois orientations**, ci-dessous.
+
 **Note sur les pictogrammes.** Ils sont volontairement **schématiques** — une paume et des
 doigts en rectangles arrondis, mêmes proportions et même rayon partout — plutôt que des
 mains réalistes. C'est ce qui garantit que `fist-3` et `fist-4` se distinguent d'un coup
@@ -755,20 +762,27 @@ import { CardIconName } from './card-icon-keys';
       }
       @case ('thumb-up') {
         <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="30" y="44" width="46" height="40" rx="13" />
-          <rect x="14" y="14" width="16" height="40" rx="8" />
+          <g>
+            <rect x="18" y="10" width="25" height="46" rx="12.5" />
+            <rect x="18" y="50" width="27" height="41" rx="10" />
+            <rect x="42" y="49" width="42" height="14" rx="7" />
+            <rect x="42" y="64" width="38" height="14" rx="7" />
+            <rect x="42" y="79" width="34" height="14" rx="7" />
+          </g>
         </svg>
       }
       @case ('thumb-side') {
         <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="16" y="26" width="40" height="46" rx="13" />
-          <rect x="46" y="42" width="40" height="16" rx="8" />
+          <g transform="rotate(90 50 50)">
+            <!-- memes cinq rect que thumb-up -->
+          </g>
         </svg>
       }
       @case ('thumb-down') {
         <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="30" y="16" width="46" height="40" rx="13" />
-          <rect x="14" y="46" width="16" height="40" rx="8" />
+          <g transform="translate(0,100) scale(1,-1)">
+            <!-- memes cinq rect que thumb-up -->
+          </g>
         </svg>
       }
     }
