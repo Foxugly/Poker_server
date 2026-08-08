@@ -646,9 +646,20 @@ def build_state_sync(participant):
             "canAnonymise": _team_may_anonymise(room),
         },
     }
-    # A latecomer arriving in REVEALED sees the results (contract §5.1, §6.e) — the
-    # anonymous tally only, same as everyone else post-reveal (no participant->card
-    # link, ever).
-    if round_state == RoundState.REVEALED:
-        payload["tally"] = revealed_payload(room)["tally"]
+    # Un arrivant — ou un client qui recharge — sur un round deja revele doit voir le
+    # MEME resultat que ceux qui etaient la (contrat §5.1, §6.e). On reutilise donc
+    # exactement le payload de la revelation, plutot que le seul decompte : il porte
+    # aussi l'ecart et, en mode nominatif, le lien participant -> carte qui fait
+    # retourner les cartes du tapis. Sans lui, recharger laissait les cartes face
+    # cachee alors que le decompte, lui, s'affichait.
+    #
+    # L'invariant d'anonymat est preserve sans effort : ``revealed_payload`` n'emet
+    # aucune cle ``votes`` sur un round anonyme, et c'est bien lui qui decide ici.
+    #
+    # ACTED est inclus car le client traite « revele » et « acte » comme un seul etat
+    # d'affichage : l'omettre laissait le meme trou apres la globalisation.
+    if round_state in (RoundState.REVEALED, RoundState.ACTED):
+        payload.update(
+            {k: v for k, v in revealed_payload(room).items() if k in ("tally", "spread", "votes")}
+        )
     return payload
