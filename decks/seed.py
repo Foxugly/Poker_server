@@ -58,7 +58,23 @@ def create_standard_deck():
 
 
 SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
-SHARED_CARD_BACK = "decks/backs/back.webp"
+# Repli seulement : ``_standard_card_back()`` prend d'abord un dos reellement
+# present au catalogue. Ce nom-la est un placeholder herite du premier deck, et
+# le fichier n'existe pas — une salle sans compte affichait donc un rectangle nu.
+FALLBACK_CARD_BACK = "decks/backs/back.webp"
+
+
+def _standard_card_back():
+    """Le dos par defaut d'un nouveau deck : le premier dos maison du catalogue.
+
+    Le resoudre au lieu de coder un nom en dur evite de reproduire le placeholder
+    d'origine, dont le fichier n'a jamais ete televerse. Ce dos ne sert qu'aux
+    salles sans compte : une equipe qui a choisi le sien passe avant (selection.py).
+    """
+    from .models import CardBack
+
+    back = CardBack.objects.filter(is_standard=True, is_active=True).order_by("pk").first()
+    return back.image.name if back and back.image else FALLBACK_CARD_BACK
 
 # Le fond partage est un eclat pastel tres CLAIR au centre (quasi blanc), borde de
 # noir. Un pictogramme blanc y serait invisible — d'ou un quasi-noir, qui reprend la
@@ -100,7 +116,7 @@ def _create_icon_deck(vote_type_code, resolution_strategy, names, cards):
     vt.save()
 
     deck = Deck.objects.create(
-        vote_type=vt, is_standard=True, free_tier=False, card_back_image=SHARED_CARD_BACK
+        vote_type=vt, is_standard=True, free_tier=False, card_back_image=_standard_card_back()
     )
     for lang, name in names.items():
         deck.set_current_language(lang)
