@@ -56,25 +56,27 @@ def available_card_backs(team=None):
     return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
 
 
-def free_decks_by_ids(deck_ids):
-    """Every free deck, with the caller's pick (if any) first.
+def free_decks():
+    """Tout le catalogue gratuit, dans l'ordre du catalogue.
 
-    An account-less room always carries the WHOLE free catalogue — the facilitator
-    may switch poker type round by round in-room — so the home-page pick only
-    chooses the STARTING type (the first snapshot becomes the active deck).
-    Unknown ids are silently ignored: they come from a public payload.
+    Une salle sans compte porte l'INTEGRALITE du catalogue gratuit — le facilitateur
+    change de type de poker round par round, en salle — et le premier fait office de
+    type de depart. Rien ne se choisit a la creation : la page d'accueil ne demande
+    plus que le titre et le nom.
     """
-    catalogue = list(available_decks(None))
-    wanted = set(deck_ids or [])
-    chosen = [d for d in catalogue if d.pk in wanted]
-    rest = [d for d in catalogue if d.pk not in wanted]
-    return chosen + rest
+    return list(available_decks(None))
 
 
-def free_card_back_by_id(card_back_id):
-    if card_back_id is None:
-        return None
-    return next((b for b in available_card_backs(None) if b.pk == card_back_id), None)
+def imposed_free_card_back():
+    """Le dos impose a une salle sans compte : le premier du catalogue gratuit.
+
+    ``None`` quand le catalogue est vide, auquel cas l'appelant retombe sur le dos
+    propre au deck. Ce repli existe pour ne jamais refuser une creation, mais il vaut
+    mieux l'eviter : le dos du tout premier deck est un placeholder dont le fichier
+    n'a jamais ete televerse, et la carte face cachee s'affichait alors entierement
+    nue. D'ou le choix de puiser dans le catalogue plutot que de s'y fier.
+    """
+    return available_card_backs(None).first()
 
 
 def available_felts(team=None):

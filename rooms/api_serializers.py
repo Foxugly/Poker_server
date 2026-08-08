@@ -6,11 +6,10 @@ class CreateRoomSerializer(serializers.Serializer):
     # Anonymous rooms: username required. Team rooms: derived from the authed user.
     username = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
     team = serializers.IntegerField(required=False, allow_null=True)
-    # Account-less rooms choose here, at creation: with no Team to persist the
-    # choice, it only ever lives in the room's frozen snapshots. Ignored for team
-    # rooms, which take the team's enabled decks.
-    deck_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
-    card_back_id = serializers.IntegerField(required=False, allow_null=True)
+    # Rien d'autre : une salle sans compte ne choisit ni son type de poker (il se
+    # change en salle) ni son dos (impose). Une salle d'equipe prend les decks
+    # actives par l'equipe. Un client d'une version anterieure peut encore envoyer
+    # deck_ids / card_back_id : les champs n'existant plus, ils sont ignores.
 
 
 class JoinRoomSerializer(serializers.Serializer):
