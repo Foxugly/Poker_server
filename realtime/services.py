@@ -633,6 +633,13 @@ def build_state_sync(participant):
         "deckSnapshot": active_deck_snapshot(room),
         "availableDecks": available_decks_payload(room),
         "participants": participants_list(room),
+        # Le role du destinataire, et son identifiant pour qu'il se reconnaisse dans
+        # les diffusions. Le client le tenait jusqu'ici de sa session enregistree a
+        # l'arrivee, donc figee : prendre le role de facilitateur le rendait tel pour
+        # tout le monde SAUF pour lui, et recharger n'y changeait rien, le role perime
+        # etant persiste. C'est le serveur qui fait autorite.
+        "myRole": participant.role,
+        "myParticipantId": str(participant.public_id),
         "myVote": my_vote,
         "result": result,
         "facilitatorPresent": facilitator_present(room),
