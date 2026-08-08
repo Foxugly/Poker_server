@@ -66,16 +66,36 @@ def test_every_seeded_deck_takes_its_back_from_the_catalogue():
 
 
 @pytest.mark.django_db
-def test_icons_are_dark_enough_for_the_light_card_front():
-    """Le fond partage est un eclat pastel quasi blanc en son centre : un pictogramme
-    clair y serait invisible. Aucun test visuel ne rattraperait ca, et le defaut ne se
-    verrait qu'en salle — d'ou ce garde-fou sur la luminance de la couleur semee."""
-    for deck in (create_fist_of_five_deck(), create_roman_vote_deck()):
+def test_every_layer_is_dark_enough_for_the_shared_card_front():
+    """La face commune est un eclat pastel quasi blanc en son centre : toute couche
+    claire y serait invisible — texte comme pictogramme.
+
+    Aucun test ne rattraperait ca autrement : le defaut ne se verrait qu'en salle, et
+    seulement pour qui regarde. Le deck standard est concerne au meme titre que les
+    autres, ses deux couches de texte etant blanches a l'origine, quand chaque carte
+    avait encore sa propre illustration sombre.
+    """
+    from decks.seed import create_standard_deck
+
+    for fabrique in (create_standard_deck, create_fist_of_five_deck, create_roman_vote_deck):
+        deck = fabrique()
         for card in deck.cards.all():
-            color = card.layers.first().color
-            r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
-            luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            assert luminance < 128, f"{card.slug}: {color} est trop clair pour ce fond"
+            for couche in card.layers.all():
+                r, g, b = (int(couche.color[i:i + 2], 16) for i in (1, 3, 5))
+                luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                assert luminance < 128, f"{fabrique.__name__}/{card.slug}: {couche.color} trop clair"
+
+
+@pytest.mark.django_db
+def test_every_seeded_card_uses_the_shared_front():
+    """Les illustrations par carte du premier jet n'ont jamais ete televersees : y
+    referer affichait la couleur de repli a la place d'une carte."""
+    from decks.seed import SHARED_CARD_FRONT, create_standard_deck
+
+    for fabrique in (create_standard_deck, create_fist_of_five_deck, create_roman_vote_deck):
+        deck = fabrique()
+        fonds = {c.background_image.name for c in deck.cards.all()}
+        assert fonds == {SHARED_CARD_FRONT}, f"{fabrique.__name__}: {fonds}"
 
 
 @pytest.mark.django_db
