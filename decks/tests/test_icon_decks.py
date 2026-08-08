@@ -49,18 +49,20 @@ def test_both_decks_are_reserved_to_paid_teams():
 
 
 @pytest.mark.django_db
-def test_deck_back_points_at_a_real_catalogue_entry():
-    """Le dos par defaut doit venir du catalogue, pas d'un nom code en dur.
+def test_every_seeded_deck_takes_its_back_from_the_catalogue():
+    """Aucun peuplement ne doit coder un nom de dos en dur.
 
-    Le premier deck de l'application reference « decks/backs/back.webp », un
-    placeholder dont le fichier n'a jamais ete televerse : une salle sans compte y
-    affiche un rectangle nu. Recopier ce nom aurait propage le defaut.
+    Le placeholder historique « decks/backs/back.webp » n'a jamais ete televerse :
+    un deck qui le reference affiche une carte face cachee nue. Le seul repli
+    acceptable est un catalogue vide, sinon on prend un dos qui existe vraiment.
     """
     from decks.models import CardBack
+    from decks.seed import create_standard_deck
 
     back = CardBack.objects.create(is_standard=True, name="Fox", image="decks/backs/reel.png")
-    deck = create_fist_of_five_deck()
-    assert deck.card_back_image.name == back.image.name
+
+    for fabrique in (create_standard_deck, create_fist_of_five_deck, create_roman_vote_deck):
+        assert fabrique().card_back_image.name == back.image.name, fabrique.__name__
 
 
 @pytest.mark.django_db

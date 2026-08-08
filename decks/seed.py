@@ -27,7 +27,7 @@ def create_standard_deck():
     vt.save()
 
     deck = Deck.objects.create(
-        vote_type=vt, is_standard=True, card_back_image="decks/backs/back.webp"
+        vote_type=vt, is_standard=True, card_back_image=_standard_card_back()
     )
     deck.set_current_language("en")
     deck.name = "Delegation Poker"
@@ -58,9 +58,9 @@ def create_standard_deck():
 
 
 SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
-# Repli seulement : ``_standard_card_back()`` prend d'abord un dos reellement
-# present au catalogue. Ce nom-la est un placeholder herite du premier deck, et
-# le fichier n'existe pas — une salle sans compte affichait donc un rectangle nu.
+# Repli seulement, quand le catalogue des dos est vide : ce nom est le placeholder
+# historique, dont le fichier n'a jamais ete televerse. Y retomber affiche une carte
+# face cachee nue — d'ou ``_standard_card_back()``, qui puise d'abord au catalogue.
 FALLBACK_CARD_BACK = "decks/backs/back.webp"
 
 
