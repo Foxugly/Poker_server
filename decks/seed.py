@@ -65,21 +65,23 @@ SHARED_CARD_BACK = "decks/backs/back.webp"
 # bordure de la carte. A revoir si le fond change pour une illustration sombre.
 ICON_COLOR = "#111111"
 
-# (valeur, slug, ordre, cle d'icone)
+ICON_DIR = "decks/icons"
+
+# (valeur, slug, ordre, fichier du pictogramme)
 FIST_OF_FIVE_CARDS = [
-    ("0", "fist-0", 0, "fist-0"),
-    ("1", "fist-1", 1, "fist-1"),
-    ("2", "fist-2", 2, "fist-2"),
-    ("3", "fist-3", 3, "fist-3"),
-    ("4", "fist-4", 4, "fist-4"),
-    ("5", "fist-5", 5, "fist-5"),
+    ("0", "fist-0", 0, f"{ICON_DIR}/fist-0.png"),
+    ("1", "fist-1", 1, f"{ICON_DIR}/fist-1.png"),
+    ("2", "fist-2", 2, f"{ICON_DIR}/fist-2.png"),
+    ("3", "fist-3", 3, f"{ICON_DIR}/fist-3.png"),
+    ("4", "fist-4", 4, f"{ICON_DIR}/fist-4.png"),
+    ("5", "fist-5", 5, f"{ICON_DIR}/fist-5.png"),
 ]
 ROMAN_VOTE_CARDS = [
-    ("+1", "thumb-up", 1, "thumb-up"),
+    ("+1", "thumb-up", 1, f"{ICON_DIR}/thumb-up.png"),
     # Le neutre est un poing ferme — ni pour, ni contre — et non un pouce a
-    # l'horizontale, d'ou « neutral » plutot que « side » dans la cle d'icone.
-    ("0", "thumb-neutral", 2, "thumb-neutral"),
-    ("-1", "thumb-down", 3, "thumb-down"),
+    # l'horizontale, d'ou « neutral » plutot que « side ».
+    ("0", "thumb-neutral", 2, f"{ICON_DIR}/thumb-neutral.png"),
+    ("-1", "thumb-down", 3, f"{ICON_DIR}/thumb-down.png"),
 ]
 
 
@@ -105,18 +107,18 @@ def _create_icon_deck(vote_type_code, resolution_strategy, names, cards):
         deck.name = name
         deck.save()
 
-    for value, slug, order, icon_key in cards:
+    for value, slug, order, icon_image in cards:
         card = Card.objects.create(
             deck=deck, value=value, slug=slug, order=order,
             background_image=SHARED_CARD_FRONT,
         )
-        layer = TextLayer.objects.create(
+        # Aucun texte : une couche icon dessine son image. Le pictogramme est une
+        # donnee comme les autres visuels — en ajouter un est un televersement,
+        # jamais une livraison du frontend.
+        TextLayer.objects.create(
             card=card, order=1, pos_x=50, pos_y=50, font_size=55,
-            color=ICON_COLOR, content_kind=TextLayerKind.ICON,
+            color=ICON_COLOR, content_kind=TextLayerKind.ICON, image=icon_image,
         )
-        layer.set_current_language("en")
-        layer.content = icon_key
-        layer.save()
     return deck
 
 

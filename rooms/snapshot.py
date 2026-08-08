@@ -55,6 +55,9 @@ def build_deck_snapshot(deck: Deck, card_back=None) -> dict:
                     "color": layer.color,
                     "align": layer.align,
                     "text": _layer_text(layer),
+                    # Le pictogramme d'une couche ``icon`` — None sur une couche de texte.
+                    # Le client le peint en masque teinte par ``color``, jamais en <img>.
+                    "icon": _media_url(layer.image),
                 }
             )
         cards.append(

@@ -19,8 +19,8 @@ def test_fist_of_five_has_six_mute_cards():
         assert layers[0].content_kind == TextLayerKind.ICON
         assert card.background_image.name == "decks/cards/front_cartes_foxugly.png"
 
-    keys = [c.layers.first().safe_translation_getter("content", any_language=True) for c in cards]
-    assert keys == ["fist-0", "fist-1", "fist-2", "fist-3", "fist-4", "fist-5"]
+    images = [c.layers.first().image.name for c in cards]
+    assert images == [f"decks/icons/fist-{n}.png" for n in range(6)]
 
 
 @pytest.mark.django_db
@@ -29,8 +29,12 @@ def test_roman_vote_orders_from_favourable_to_against():
     cards = list(deck.cards.order_by("order"))
 
     assert [c.value for c in cards] == ["+1", "0", "-1"]
-    keys = [c.layers.first().safe_translation_getter("content", any_language=True) for c in cards]
-    assert keys == ["thumb-up", "thumb-neutral", "thumb-down"]
+    images = [c.layers.first().image.name for c in cards]
+    assert images == [
+        "decks/icons/thumb-up.png",
+        "decks/icons/thumb-neutral.png",
+        "decks/icons/thumb-down.png",
+    ]
 
 
 @pytest.mark.django_db
