@@ -55,3 +55,95 @@ def create_standard_deck():
             name_layer.content = text
             name_layer.save()
     return deck
+
+
+SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
+SHARED_CARD_BACK = "decks/backs/back.webp"
+
+# Le fond partage est un eclat pastel tres CLAIR au centre (quasi blanc), borde de
+# noir. Un pictogramme blanc y serait invisible — d'ou un quasi-noir, qui reprend la
+# bordure de la carte. A revoir si le fond change pour une illustration sombre.
+ICON_COLOR = "#111111"
+
+# (valeur, slug, ordre, cle d'icone)
+FIST_OF_FIVE_CARDS = [
+    ("0", "fist-0", 0, "fist-0"),
+    ("1", "fist-1", 1, "fist-1"),
+    ("2", "fist-2", 2, "fist-2"),
+    ("3", "fist-3", 3, "fist-3"),
+    ("4", "fist-4", 4, "fist-4"),
+    ("5", "fist-5", 5, "fist-5"),
+]
+ROMAN_VOTE_CARDS = [
+    ("+1", "thumb-up", 1, "thumb-up"),
+    # Le neutre est un poing ferme — ni pour, ni contre — et non un pouce a
+    # l'horizontale, d'ou « neutral » plutot que « side » dans la cle d'icone.
+    ("0", "thumb-neutral", 2, "thumb-neutral"),
+    ("-1", "thumb-down", 3, "thumb-down"),
+]
+
+
+def _create_icon_deck(vote_type_code, resolution_strategy, names, cards):
+    """Un deck muet : chaque carte porte une unique couche ``icon`` plein cadre.
+
+    ``names`` est un dict {code_langue: nom du deck}. Les cartes n'ont aucune couche
+    ``i18n`` : la valeur brute est ce qui s'affiche dans les surfaces de resultat, et
+    elle a ete choisie pour se lire dans les cinq langues.
+    """
+    vt, _ = VoteType.objects.get_or_create(
+        code=vote_type_code, defaults={"resolution_strategy": resolution_strategy}
+    )
+    vt.set_current_language("en")
+    vt.name = names["en"]
+    vt.save()
+
+    deck = Deck.objects.create(
+        vote_type=vt, is_standard=True, free_tier=False, card_back_image=SHARED_CARD_BACK
+    )
+    for lang, name in names.items():
+        deck.set_current_language(lang)
+        deck.name = name
+        deck.save()
+
+    for value, slug, order, icon_key in cards:
+        card = Card.objects.create(
+            deck=deck, value=value, slug=slug, order=order,
+            background_image=SHARED_CARD_FRONT,
+        )
+        layer = TextLayer.objects.create(
+            card=card, order=1, pos_x=50, pos_y=50, font_size=55,
+            color=ICON_COLOR, content_kind=TextLayerKind.ICON,
+        )
+        layer.set_current_language("en")
+        layer.content = icon_key
+        layer.save()
+    return deck
+
+
+def create_fist_of_five_deck():
+    """Gradation d'adhesion de 0 a 5, SANS regle de veto : le 0 signifie
+    « je n'adhere pas du tout », pas « je bloque »."""
+    return _create_icon_deck(
+        "fist_of_five",
+        "fist_of_five_v1",
+        # Nom de methode, garde tel quel dans les cinq langues (modifiable en admin).
+        {lang: "Fist of Five" for lang in LANG_ORDER},
+        FIST_OF_FIVE_CARDS,
+    )
+
+
+def create_roman_vote_deck():
+    """Pour / neutre / contre. Les valeurs +1, 0 et -1 se lisent dans les cinq langues,
+    ce qui evite toute traduction : elles ressortent brutes dans les surfaces de resultat."""
+    return _create_icon_deck(
+        "roman_vote",
+        "roman_v1",
+        {
+            "en": "Roman Vote",
+            "fr": "Vote romain",
+            "nl": "Romeinse stemming",
+            "it": "Voto romano",
+            "es": "Voto romano",
+        },
+        ROMAN_VOTE_CARDS,
+    )
