@@ -49,6 +49,21 @@ def test_both_decks_are_reserved_to_paid_teams():
 
 
 @pytest.mark.django_db
+def test_deck_back_points_at_a_real_catalogue_entry():
+    """Le dos par defaut doit venir du catalogue, pas d'un nom code en dur.
+
+    Le premier deck de l'application reference « decks/backs/back.webp », un
+    placeholder dont le fichier n'a jamais ete televerse : une salle sans compte y
+    affiche un rectangle nu. Recopier ce nom aurait propage le defaut.
+    """
+    from decks.models import CardBack
+
+    back = CardBack.objects.create(is_standard=True, name="Fox", image="decks/backs/reel.png")
+    deck = create_fist_of_five_deck()
+    assert deck.card_back_image.name == back.image.name
+
+
+@pytest.mark.django_db
 def test_icons_are_dark_enough_for_the_light_card_front():
     """Le fond partage est un eclat pastel quasi blanc en son centre : un pictogramme
     clair y serait invisible. Aucun test visuel ne rattraperait ca, et le defaut ne se
