@@ -1,10 +1,19 @@
-"""Create the standard Delegation Poker deck (7 cards, 2 layers each).
+"""Peuplement des decks livres avec l'application.
 
-Used by tests and by the ``seed_delegation_deck`` management command. Image fields are
-set to placeholder names by default — the original illustrations are a non-technical
-content dependency (scope §10); the code is ready before the artwork exists.
+Tous les decks partagent la meme face de carte et la meme encre : les illustrations
+par deck etaient un placeholder du premier jet (« upload the real illustrations in
+the admin ») dont les fichiers n'ont jamais ete televerses, si bien que les cartes
+s'affichaient sur la couleur de repli. Un fond commun vaut mieux qu'un fond absent,
+et reste remplacable carte par carte depuis l'admin.
 """
 from decks.models import Card, Deck, TextLayer, TextLayerKind, VoteType
+
+# Face commune a tous les decks : un eclat pastel, quasi blanc en son centre.
+SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
+# Encre commune. Ce fond etant tres clair, tout dessin ou texte clair y serait
+# invisible — d'ou un quasi-noir, qui reprend la bordure de la carte. A revoir
+# ensemble si la face commune change pour une illustration sombre.
+CARD_INK = "#111111"
 
 LEVELS = [
     ("1", "tell", "Tell", "Dire", "Vertellen", "Dire", "Decir"),
@@ -36,11 +45,11 @@ def create_standard_deck():
     for value, slug, *names in LEVELS:
         card = Card.objects.create(
             deck=deck, value=value, slug=slug, order=int(value),
-            background_image=f"decks/cards/{slug}.webp",
+            background_image=SHARED_CARD_FRONT,
         )
         num = TextLayer.objects.create(
             card=card, order=1, pos_x=12, pos_y=12, font_size=9, font_weight=700,
-            content_kind=TextLayerKind.STATIC,
+            color=CARD_INK, content_kind=TextLayerKind.STATIC,
         )
         num.set_current_language("en")
         num.content = value
@@ -48,7 +57,7 @@ def create_standard_deck():
 
         name_layer = TextLayer.objects.create(
             card=card, order=2, pos_x=50, pos_y=82, font_size=7, font_weight=600,
-            content_kind=TextLayerKind.I18N,
+            color=CARD_INK, content_kind=TextLayerKind.I18N,
         )
         for lang, text in zip(LANG_ORDER, names):
             name_layer.set_current_language(lang)
@@ -57,7 +66,6 @@ def create_standard_deck():
     return deck
 
 
-SHARED_CARD_FRONT = "decks/cards/front_cartes_foxugly.png"
 # Repli seulement, quand le catalogue des dos est vide : ce nom est le placeholder
 # historique, dont le fichier n'a jamais ete televerse. Y retomber affiche une carte
 # face cachee nue — d'ou ``_standard_card_back()``, qui puise d'abord au catalogue.
@@ -76,10 +84,6 @@ def _standard_card_back():
     back = CardBack.objects.filter(is_standard=True, is_active=True).order_by("pk").first()
     return back.image.name if back and back.image else FALLBACK_CARD_BACK
 
-# Le fond partage est un eclat pastel tres CLAIR au centre (quasi blanc), borde de
-# noir. Un pictogramme blanc y serait invisible — d'ou un quasi-noir, qui reprend la
-# bordure de la carte. A revoir si le fond change pour une illustration sombre.
-ICON_COLOR = "#111111"
 
 ICON_DIR = "decks/icons"
 
@@ -133,7 +137,7 @@ def _create_icon_deck(vote_type_code, resolution_strategy, names, cards):
         # jamais une livraison du frontend.
         TextLayer.objects.create(
             card=card, order=1, pos_x=50, pos_y=50, font_size=55,
-            color=ICON_COLOR, content_kind=TextLayerKind.ICON, image=icon_image,
+            color=CARD_INK, content_kind=TextLayerKind.ICON, image=icon_image,
         )
     return deck
 
