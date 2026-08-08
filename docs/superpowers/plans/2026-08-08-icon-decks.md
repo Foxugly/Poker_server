@@ -692,11 +692,19 @@ qu'un `@switch` placé *à l'intérieur* d'un `<svg>` ne garantirait pas.
 > retenu. Recopier des coordonnées dans ce plan ne ferait que créer une troisième version
 > divergente : `card-icon.component.ts` fait foi.
 >
-> Ce qui reste vrai du principe : contour d'épaisseur uniforme (5), bouts arrondis, une
-> paume ouverte surmontée de quatre doigts en U inversé, un doigt non levé restant présent
-> **replié en phalange** — c'est ce qui fait lire une main plutôt que des barres, et ce qui
-> donne au `fist-0` un vrai poing. Les doigts se lèvent de l'index vers l'auriculaire, donc
-> aucune combinaison ne produit de geste malencontreux. Le pouce du `5` sort à l'horizontale.
+> Ce qui reste vrai du principe : **le jeu est volontairement mixte.** Les mains du Fist of
+> Five sont **au trait** (contour d'épaisseur 5, bouts arrondis) ; les pouces du vote romain
+> sont **en aplat**. Chaque traitement est le meilleur pour son deck, et une salle ne joue
+> qu'un deck à la fois — les deux jeux ne se croisent qu'au sélecteur de decks d'une équipe.
+> Conséquence : les attributs de rendu sont portés par chaque `<svg>` et non par une règle
+> CSS commune, ce qu'un test verrouille.
+>
+> Fist of Five : une paume ouverte surmontée de quatre doigts en U inversé, un doigt non levé
+> restant présent **replié en phalange** — c'est ce qui fait lire une main plutôt que des
+> barres, et ce qui donne au `fist-0` un vrai poing. Les doigts se lèvent de l'index vers
+> l'auriculaire, donc aucune combinaison ne produit de geste malencontreux. Le pouce du `5`
+> sort à l'horizontale. Vote romain : pouce dressé plus trois doigts repliés, décliné en
+> trois orientations (neutre = quart de tour, contre = miroir vertical et non rotation).
 >
 > **Contrainte de licence à ne pas perdre de vue** : les tracés sont originaux. S'inspirer
 > d'un style est libre, reprendre les tracés d'un jeu d'icônes sous licence (Icons8 et
