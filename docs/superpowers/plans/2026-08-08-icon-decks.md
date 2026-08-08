@@ -564,19 +564,21 @@ et non des degres."
   composant `CardIconComponent` de sélecteur `app-card-icon`, entrée requise `name`.
   Consommés par la tâche 5.
 
-> **Correction apportée à l'exécution.** Les trois pouces étaient d'abord composés
-> d'une paume et d'une barre. Rendus dans un navigateur, ils ne se lisaient pas : les
-> deux rectangles se touchaient sans se chevaucher et l'œil voyait un « L ». Les tests
-> ne pouvaient pas l'attraper — ils vérifient que des `rect` existent, pas qu'ils
-> composent quelque chose de reconnaissable. La construction retenue est **une seule
-> main (pouce dressé + trois doigts repliés) déclinée en trois orientations**, ci-dessous.
+> **Ce que l'exécution a appris.** Les pictogrammes ont été refaits **deux fois**, et à
+> chaque fois c'est le rendu dans un navigateur qui a tranché, jamais les tests. Les aplats
+> géométriques du premier jet ne se lisaient pas : le `fist-0` faisait moufle posée à plat,
+> les pouces faisaient « L ». Aucun test ne pouvait l'attraper — vérifier que des formes
+> existent ne dit rien de ce qu'elles composent.
+>
+> **La leçon à retenir pour tout travail de pictogramme : prévoir une étape de rendu visuel
+> comme vérification à part entière.** Une suite verte ne prouve pas qu'une icône est lisible.
 
-**Note sur les pictogrammes.** Ils sont volontairement **schématiques** — une paume et des
-doigts en rectangles arrondis, mêmes proportions et même rayon partout — plutôt que des
-mains réalistes. C'est ce qui garantit que `fist-3` et `fist-4` se distinguent d'un coup
-d'œil, faiblesse connue d'un deck muet. `fist-0` reprend exactement la paume des autres,
-sans aucun doigt levé, pour ne pas se lire comme un « stop » : ce deck n'a pas de véto.
-Ces tracés vivent dans **un seul fichier** ; les affiner plus tard ne touchera aucun câblage.
+**Note sur les pictogrammes.** Ils sont dessinés **au trait** : contour d'épaisseur uniforme,
+bouts et angles arrondis, aucune surface pleine. C'est ce qui garantit que `fist-3` et
+`fist-4` se distinguent d'un coup d'œil, faiblesse connue d'un deck muet — vérifiée aussi à
+petite taille. `fist-0` est un vrai poing (quatre phalanges repliées) et non une main mutilée :
+ce deck est une gradation d'adhésion, il n'a pas de véto. Ces tracés vivent dans **un seul
+fichier** ; les affiner plus tard ne touchera aucun câblage.
 
 - [ ] **Étape 1 : créer la branche**
 
@@ -684,127 +686,22 @@ Créer `src/app/shared/ui/card-icon/card-icon.component.ts`.
 Chaque cas porte son **propre `<svg>` complet** : c'est ce qui garantit le namespace SVG,
 qu'un `@switch` placé *à l'intérieur* d'un `<svg>` ne garantirait pas.
 
-Le vocabulaire graphique est partagé par les neuf tracés — paume `rx="13"`, doigt
-`10×36 rx="5"`, pouce `rx="6"` ou `rx="8"` — et les doigts occupent quatre emplacements
-fixes (`x` = 28, 40, 52, 64), remplis depuis l'index vers l'auriculaire.
+> **Les tracés définitifs vivent dans le composant, pas ici.** Ils ont changé deux fois à
+> l'exécution — d'abord des aplats géométriques, jugés illisibles au rendu (le `fist-0`
+> lisait comme une moufle, les pouces comme des « L »), puis un dessin **au trait**, seul
+> retenu. Recopier des coordonnées dans ce plan ne ferait que créer une troisième version
+> divergente : `card-icon.component.ts` fait foi.
+>
+> Ce qui reste vrai du principe : contour d'épaisseur uniforme (5), bouts arrondis, une
+> paume ouverte surmontée de quatre doigts en U inversé, un doigt non levé restant présent
+> **replié en phalange** — c'est ce qui fait lire une main plutôt que des barres, et ce qui
+> donne au `fist-0` un vrai poing. Les doigts se lèvent de l'index vers l'auriculaire, donc
+> aucune combinaison ne produit de geste malencontreux. Le pouce du `5` sort à l'horizontale.
+>
+> **Contrainte de licence à ne pas perdre de vue** : les tracés sont originaux. S'inspirer
+> d'un style est libre, reprendre les tracés d'un jeu d'icônes sous licence (Icons8 et
+> consorts) ne l'est pas — et ces deux decks constituent l'offre payante.
 
-```typescript
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-
-import { CardIconName } from './card-icon-keys';
-
-/**
- * Les neuf pictogrammes des decks muets, en SVG inline.
- *
- * Volontairement schematiques (paume et doigts en rectangles arrondis) : sur une
- * carte sans texte, un compte de doigts doit se lire instantanement, et `fist-3`
- * doit se distinguer de `fist-4` sans effort. `fist-0` reprend la paume des autres
- * sans doigt leve — ce deck est une gradation d'adhesion, pas un droit de veto,
- * donc surtout pas un poing brandi qui se lirait « stop ».
- *
- * Le tout est statique : aucun `innerHTML`, donc aucune surface d'injection.
- */
-@Component({
-  selector: 'app-card-icon',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @switch (name()) {
-      @case ('fist-0') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="14" y="52" width="16" height="12" rx="6" />
-        </svg>
-      }
-      @case ('fist-1') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="14" y="52" width="16" height="12" rx="6" />
-          <rect x="28" y="16" width="10" height="36" rx="5" />
-        </svg>
-      }
-      @case ('fist-2') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="14" y="52" width="16" height="12" rx="6" />
-          <rect x="28" y="16" width="10" height="36" rx="5" />
-          <rect x="40" y="16" width="10" height="36" rx="5" />
-        </svg>
-      }
-      @case ('fist-3') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="14" y="52" width="16" height="12" rx="6" />
-          <rect x="28" y="16" width="10" height="36" rx="5" />
-          <rect x="40" y="16" width="10" height="36" rx="5" />
-          <rect x="52" y="16" width="10" height="36" rx="5" />
-        </svg>
-      }
-      @case ('fist-4') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="14" y="52" width="16" height="12" rx="6" />
-          <rect x="28" y="16" width="10" height="36" rx="5" />
-          <rect x="40" y="16" width="10" height="36" rx="5" />
-          <rect x="52" y="16" width="10" height="36" rx="5" />
-          <rect x="64" y="16" width="10" height="36" rx="5" />
-        </svg>
-      }
-      @case ('fist-5') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <rect x="26" y="44" width="48" height="42" rx="13" />
-          <rect x="28" y="16" width="10" height="36" rx="5" />
-          <rect x="40" y="16" width="10" height="36" rx="5" />
-          <rect x="52" y="16" width="10" height="36" rx="5" />
-          <rect x="64" y="16" width="10" height="36" rx="5" />
-          <rect x="8" y="28" width="12" height="32" rx="6" transform="rotate(-20 14 44)" />
-        </svg>
-      }
-      @case ('thumb-up') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <g>
-            <rect x="18" y="10" width="25" height="46" rx="12.5" />
-            <rect x="18" y="50" width="27" height="41" rx="10" />
-            <rect x="42" y="49" width="42" height="14" rx="7" />
-            <rect x="42" y="64" width="38" height="14" rx="7" />
-            <rect x="42" y="79" width="34" height="14" rx="7" />
-          </g>
-        </svg>
-      }
-      @case ('thumb-side') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <g transform="rotate(90 50 50)">
-            <!-- memes cinq rect que thumb-up -->
-          </g>
-        </svg>
-      }
-      @case ('thumb-down') {
-        <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false">
-          <g transform="translate(0,100) scale(1,-1)">
-            <!-- memes cinq rect que thumb-up -->
-          </g>
-        </svg>
-      }
-    }
-  `,
-  styles: [
-    `
-      :host {
-        display: block;
-        line-height: 0;
-      }
-      svg {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-    `,
-  ],
-})
-export class CardIconComponent {
-  readonly name = input.required<CardIconName>();
-}
-```
 
 - [ ] **Étape 6 : élargir le type du protocole**
 
