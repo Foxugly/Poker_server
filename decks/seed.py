@@ -76,7 +76,9 @@ FIST_OF_FIVE_CARDS = [
 ]
 ROMAN_VOTE_CARDS = [
     ("+1", "thumb-up", 1, "thumb-up"),
-    ("0", "thumb-side", 2, "thumb-side"),
+    # Le neutre est un poing ferme — ni pour, ni contre — et non un pouce a
+    # l'horizontale, d'ou « neutral » plutot que « side » dans la cle d'icone.
+    ("0", "thumb-neutral", 2, "thumb-neutral"),
     ("-1", "thumb-down", 3, "thumb-down"),
 ]
 

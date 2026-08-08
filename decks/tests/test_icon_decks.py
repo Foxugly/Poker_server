@@ -30,7 +30,7 @@ def test_roman_vote_orders_from_favourable_to_against():
 
     assert [c.value for c in cards] == ["+1", "0", "-1"]
     keys = [c.layers.first().safe_translation_getter("content", any_language=True) for c in cards]
-    assert keys == ["thumb-up", "thumb-side", "thumb-down"]
+    assert keys == ["thumb-up", "thumb-neutral", "thumb-down"]
 
 
 @pytest.mark.django_db
