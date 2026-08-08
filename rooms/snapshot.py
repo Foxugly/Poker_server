@@ -19,8 +19,12 @@ def _media_url(image_field):
 
 
 def _layer_text(layer):
-    """Static → single string (fallback/EN row); i18n → {lang: text} across LANGUAGES."""
-    if layer.content_kind == TextLayerKind.STATIC:
+    """Static/icon → single string (fallback/EN row); i18n → {lang: text} across LANGUAGES.
+
+    Une couche ``icon`` porte une cle d'icone resolue par le client : ce n'est pas de la
+    prose, elle ne se traduit pas et sort donc en chaine simple comme une couche statique.
+    """
+    if layer.content_kind in (TextLayerKind.STATIC, TextLayerKind.ICON):
         return layer.safe_translation_getter("content", any_language=True) or ""
     text = {}
     for code, _ in settings.LANGUAGES:

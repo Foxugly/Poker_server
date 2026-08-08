@@ -12,6 +12,7 @@ from parler.models import TranslatableModel, TranslatedFields
 class TextLayerKind(models.TextChoices):
     STATIC = "static", "Static (one value, all languages)"
     I18N = "i18n", "Translated (per-language)"
+    ICON = "icon", "Icon key (resolved by the client's icon registry)"
 
 
 class LayerAlign(models.TextChoices):
