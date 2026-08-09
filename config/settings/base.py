@@ -159,7 +159,12 @@ PUBLIC_MEDIA_BASE_URL = env("PUBLIC_MEDIA_BASE_URL", default=FRONTEND_BASE_URL)
 # Free anonymous rooms expire after this many hours of inactivity (scope §4).
 ROOM_INACTIVITY_HOURS = env.int("ROOM_INACTIVITY_HOURS", default=8)
 # Hard caps (product): people per room, and members per team (a team feeds a room).
-ROOM_MAX_PARTICIPANTS = env.int("ROOM_MAX_PARTICIPANTS", default=20)
+# 15 et non 20 : au-dela, les cartes deviennent trop petites autour de la table pour
+# rester lisibles. Le tour de table repartit les sieges sur un ovale, donc chaque
+# joueur supplementaire retrecit toutes les cartes — mesure a 1536x864 : 124px a 5
+# joueurs, 85 a 12, 61 a 15, 46 a 20. Distinct de TEAM_MAX_MEMBERS ci-dessous, qui
+# limite les membres d'une equipe et non les presents dans une salle.
+ROOM_MAX_PARTICIPANTS = env.int("ROOM_MAX_PARTICIPANTS", default=15)
 TEAM_MAX_MEMBERS = env.int("TEAM_MAX_MEMBERS", default=20)
 # Facilitator absence before the takeover guard opens (contract §6.f), in seconds.
 FACILITATOR_GUARD_SECONDS = env.int("FACILITATOR_GUARD_SECONDS", default=60)

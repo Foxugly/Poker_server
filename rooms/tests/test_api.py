@@ -5,6 +5,22 @@ from rest_framework.test import APIClient
 from rooms.models import Participant, Role, Room
 
 
+@pytest.mark.django_db
+def test_a_room_is_capped_at_fifteen_participants(client, standard_deck):
+    """Quinze et non vingt : au-dela, les cartes deviennent trop petites autour de la
+    table pour rester lisibles — chaque joueur supplementaire retrecit toutes les
+    cartes, mesure a 1536x864 : 124px a 5 joueurs, 85 a 12, 61 a 15, 46 a 20.
+
+    Verrouille ici plutot que laisse au reglage : la valeur est un choix produit,
+    repris tel quel dans le message « salle pleine » et sur la page des tarifs.
+    """
+    from rooms.models import Room
+
+    code = client.post("/api/v1/rooms", {"username": "Sam"}, format="json").json()["code"]
+
+    assert Room.objects.get(code=code).max_participants == 15
+
+
 @override_settings(ROOM_MAX_PARTICIPANTS=2)
 @pytest.mark.django_db
 def test_join_rejected_when_room_full(client, standard_deck):
