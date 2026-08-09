@@ -95,6 +95,7 @@ class CreateRoomView(APIView):
             code=code, title=data["title"], vote_type=deck.vote_type, deck_snapshot=snapshot,
             deck_snapshots=snapshots, team=team,
             max_participants=settings.ROOM_MAX_PARTICIPANTS,
+            **({"result_layout": team.result_layout} if team is not None else {}),
         )
         room.touch(save=False)
         room.save()

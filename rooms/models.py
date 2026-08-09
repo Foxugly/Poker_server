@@ -10,6 +10,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from teams.models import ResultLayout
+
 
 class Role(models.TextChoices):
     FACILITATOR = "facilitator", "Facilitator"
@@ -43,6 +45,12 @@ class Room(models.Model):
     # Fige a la creation depuis ROOM_MAX_PARTICIPANTS : une salle deja ouverte garde
     # sa limite si le reglage change, sans quoi elle pourrait se retrouver au-dela.
     max_participants = models.PositiveSmallIntegerField(default=15)
+    # Comment le depouillement s'affiche a la place de la main. Fige depuis l'equipe a
+    # la creation, comme la limite ci-dessus : une salle en cours ne doit pas changer
+    # de mise en page sous les yeux des joueurs parce qu'un manager a bascule le
+    # reglage ailleurs. Une salle anonyme n'a pas d'equipe et garde donc la valeur
+    # par defaut.
+    result_layout = models.CharField(max_length=8, choices=ResultLayout.choices, default=ResultLayout.CARDS)
     # Timer de round (optionnel) : le facilitateur l'active et regle sa duree.
     # Porte par la room et non par le round, pour persister d'un round a l'autre.
     # Duree bornee 10-60 s par pas de 5, normalisee cote serveur (services.set_timer).

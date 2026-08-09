@@ -15,7 +15,7 @@ from decks.selection import available_card_backs, available_decks, available_fel
 from decks.serializers import CardBackSerializer, DeckSerializer, FeltSerializer
 
 from .invitations import send_invitation_email
-from .models import Invitation, SurfaceStyle, Team, TeamMembership, TeamRole
+from .models import Invitation, ResultLayout, SurfaceStyle, Team, TeamMembership, TeamRole
 from .permissions import is_manager, is_member, is_owner, membership_of
 from .serializers import (
     AcceptInviteSerializer,
@@ -109,6 +109,15 @@ class TeamDetailView(APIView):
             if len(available_decks(team).filter(pk__in=ids)) != len(ids):
                 return error_response(code="deck_unavailable", detail="One of these decks is not available to this team.", http_status=400)
             deck_ids_to_set = ids
+        # Non soumis a paid_required : comme le choix d'un deck ou d'un dos, c'est un
+        # reglage d'affichage, pas un element du catalogue qu'un abonnement elargit.
+        if "result_layout" in request.data:
+            layout = request.data.get("result_layout")
+            if layout not in dict(ResultLayout.choices):
+                return error_response(code="invalid_result_layout",
+                                      detail="Expected 'cards' or 'summary'.", http_status=400)
+            team.result_layout = layout
+            updates.append("result_layout")
         for style_field in ("card_back_style", "felt_style"):
             if style_field in request.data:
                 value = request.data.get(style_field)

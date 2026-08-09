@@ -640,6 +640,9 @@ def build_state_sync(participant):
         # etant persiste. C'est le serveur qui fait autorite.
         "myRole": participant.role,
         "myParticipantId": str(participant.public_id),
+        # Mise en page du depouillement, figee sur la salle : le client remplace sa
+        # main par l'une ou l'autre forme des la revelation.
+        "resultLayout": room.result_layout,
         "myVote": my_vote,
         "result": result,
         "facilitatorPresent": facilitator_present(room),
