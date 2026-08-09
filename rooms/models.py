@@ -40,7 +40,9 @@ class Room(models.Model):
     # Null = free anonymous room (Phase 1 default).
     team = models.ForeignKey("teams.Team", on_delete=models.CASCADE, null=True, blank=True, related_name="rooms")
     # Hard cap on participants per room (product limit).
-    max_participants = models.PositiveSmallIntegerField(default=20)
+    # Fige a la creation depuis ROOM_MAX_PARTICIPANTS : une salle deja ouverte garde
+    # sa limite si le reglage change, sans quoi elle pourrait se retrouver au-dela.
+    max_participants = models.PositiveSmallIntegerField(default=15)
     # Timer de round (optionnel) : le facilitateur l'active et regle sa duree.
     # Porte par la room et non par le round, pour persister d'un round a l'autre.
     # Duree bornee 10-60 s par pas de 5, normalisee cote serveur (services.set_timer).
