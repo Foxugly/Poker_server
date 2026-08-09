@@ -17,6 +17,19 @@ class SurfaceStyle(models.TextChoices):
     IMAGE = "image", "Image from the catalogue"
 
 
+class ResultLayout(models.TextChoices):
+    """Comment le depouillement occupe la place de la main, une fois les votes reveles.
+
+    CARDS montre les cartes jouees : la seule forme lisible sur un deck a pictogrammes,
+    dont les cartes n'ont aucun libelle et ou une ligne de texte n'aurait que la valeur
+    brute a afficher. SUMMARY en fait des lignes chiffrees, plus grandes, ou la liste
+    des votants tient sans etre tronquee.
+    """
+
+    CARDS = "cards", "Played cards"
+    SUMMARY = "summary", "Tallied summary"
+
+
 class TeamRole(models.TextChoices):
     """Team-scoped roles. Deliberately NOT "facilitator": that word is taken by
     ``rooms.Role.FACILITATOR``, who runs the current round — a per-session role any
@@ -42,6 +55,7 @@ class Team(models.Model):
     card_back_color = models.CharField(max_length=9, default="#143d2f")
     felt_style = models.CharField(max_length=8, choices=SurfaceStyle.choices, default=SurfaceStyle.COLOR)
     felt_color = models.CharField(max_length=9, default="#10b981")
+    result_layout = models.CharField(max_length=8, choices=ResultLayout.choices, default=ResultLayout.CARDS)
     # The poker types this team plays. A room freezes all of them and the
     # facilitator switches between them round by round. Empty = the standard deck.
     decks = models.ManyToManyField("decks.Deck", blank=True, related_name="teams_enabled")
