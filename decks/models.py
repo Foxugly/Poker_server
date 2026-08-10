@@ -89,6 +89,29 @@ class Felt(models.Model):
         return self.name or f"Felt<{self.pk}>"
 
 
+class Background(models.Model):
+    """The page behind the table, catalogued like felts and card backs.
+
+    Nothing ships in this catalogue: unlike felts and backs, it fills up only with
+    squad uploads (a full-bleed backdrop is a house choice, not something a generic
+    built-in does well). ``is_standard`` / ``free_tier`` are kept all the same, so
+    built-ins can be added later from the admin without a migration.
+    """
+
+    is_standard = models.BooleanField(default=True)  # built-in vs upload — see CardBack
+    free_tier = models.BooleanField(default=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    name = models.CharField(max_length=120, blank=True, default="")
+    image = models.ImageField(upload_to="decks/backgrounds/")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name or f"Background<{self.pk}>"
+
+
 class Deck(TranslatableModel):
     """A set of cards for a vote type (spec §3.2). Every deck is a shared catalogue
     entry; ``free_tier`` decides whether an account-less room may play it."""

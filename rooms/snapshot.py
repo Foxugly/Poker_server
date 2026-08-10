@@ -92,13 +92,13 @@ DEFAULT_CARD_BACK_COLOR = "#143d2f"
 DEFAULT_FELT_COLOR = "#10b981"
 
 
-def apply_team_appearance(snapshot: dict, team, card_back=None, felt=None) -> dict:
+def apply_team_appearance(snapshot: dict, team, card_back=None, felt=None, background=None) -> dict:
     """Stamp a team's appearance onto a room snapshot, honouring its styles.
 
     The style decides which of the two representations the client renders; the
     other is still carried so switching back needs no new snapshot.
     """
-    from teams.models import SurfaceStyle
+    from teams.models import BackgroundStyle, SurfaceStyle
 
     back_is_image = team.card_back_style == SurfaceStyle.IMAGE
     snapshot["cardBack"] = {
@@ -112,6 +112,19 @@ def apply_team_appearance(snapshot: dict, team, card_back=None, felt=None) -> di
         "style": "image" if felt_is_image else "color",
         "image": _media_url(felt.image) if felt_is_image else None,
         "color": team.felt_color,
+    }
+    # 'theme' n'est ni une couleur ni une image : le client ne peint rien et laisse
+    # la page suivre le mode clair/sombre. Une image choisie puis desactivee retombe
+    # sur la couleur, comme le feutre.
+    background_is_image = team.background_style == BackgroundStyle.IMAGE and background is not None
+    if team.background_style == BackgroundStyle.THEME:
+        background_style = "theme"
+    else:
+        background_style = "image" if background_is_image else "color"
+    snapshot["background"] = {
+        "style": background_style,
+        "image": _media_url(background.image) if background_is_image else None,
+        "color": team.background_color,
     }
     snapshot["theme"] = {"cardBackColor": team.card_back_color, "feltColor": team.felt_color}
     return snapshot

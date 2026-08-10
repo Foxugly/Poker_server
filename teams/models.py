@@ -17,6 +17,20 @@ class SurfaceStyle(models.TextChoices):
     IMAGE = "image", "Image from the catalogue"
 
 
+class BackgroundStyle(models.TextChoices):
+    """How the room page behind the table is skinned.
+
+    Deliberately NOT ``SurfaceStyle``: the background has a third, default state
+    where the team imposes nothing and the page keeps the viewer's light/dark
+    theme. Without it, every existing team would inherit a fixed colour and lose
+    dark mode in the room.
+    """
+
+    THEME = "theme", "Follow the light/dark theme"
+    COLOR = "color", "Flat colour"
+    IMAGE = "image", "Image from the catalogue"
+
+
 class ResultLayout(models.TextChoices):
     """Comment le depouillement occupe la place de la main, une fois les votes reveles.
 
@@ -55,6 +69,10 @@ class Team(models.Model):
     card_back_color = models.CharField(max_length=9, default="#143d2f")
     felt_style = models.CharField(max_length=8, choices=SurfaceStyle.choices, default=SurfaceStyle.COLOR)
     felt_color = models.CharField(max_length=9, default="#10b981")
+    # The page behind the table. THEME (default) paints nothing, so a team that
+    # never touches this keeps the room exactly as it is today.
+    background_style = models.CharField(max_length=8, choices=BackgroundStyle.choices, default=BackgroundStyle.THEME)
+    background_color = models.CharField(max_length=9, default="#0f172a")
     result_layout = models.CharField(max_length=8, choices=ResultLayout.choices, default=ResultLayout.CARDS)
     # The poker types this team plays. A room freezes all of them and the
     # facilitator switches between them round by round. Empty = the standard deck.
@@ -62,6 +80,9 @@ class Team(models.Model):
     # The card back, picked independently of the fronts. Null = the deck's own default.
     card_back = models.ForeignKey("decks.CardBack", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     felt = models.ForeignKey("decks.Felt", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    background = models.ForeignKey(
+        "decks.Background", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
     # Billing (P2.7) is account-level: a team is "paid" via its owner's
     # billing.Subscription (plan quota), not a per-team subscription.
 

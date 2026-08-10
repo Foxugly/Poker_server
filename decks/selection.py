@@ -6,7 +6,7 @@ team being offered a deck that room creation then refuses.
 """
 from django.db.models import Q
 
-from .models import CardBack, Deck, Felt
+from .models import Background, CardBack, Deck, Felt
 
 DELEGATION_POKER_CODE = "delegation_poker"
 
@@ -86,6 +86,24 @@ def available_felts(team=None):
         return qs.filter(is_standard=True, free_tier=True).order_by("pk")
     squad = squad_of(team.owner)
     return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
+
+
+def available_backgrounds(team=None):
+    """Backgrounds a room may use. Nothing is shipped, so this is in practice the
+    squad's own uploads — the built-in branch is kept symmetric with felts in case
+    the catalogue is ever seeded."""
+    qs = Background.objects.filter(is_active=True)
+    if team is None:
+        return qs.filter(is_standard=True, free_tier=True).order_by("pk")
+    squad = squad_of(team.owner)
+    return qs.filter(Q(is_standard=True) | Q(is_standard=False, uploaded_by__in=squad)).order_by("is_standard", "pk")
+
+
+def background_for_team(team):
+    """The team's picked background, or None. A deactivated or reassigned pick falls back."""
+    if team is None or team.background_id is None:
+        return None
+    return Background.objects.filter(pk=team.background_id, is_active=True).first()
 
 
 def felt_for_team(team):

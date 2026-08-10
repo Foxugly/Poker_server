@@ -16,10 +16,10 @@ from rest_framework.views import APIView
 
 from config.api_errors import error_response
 
-from .models import CardBack, Felt
+from .models import Background, CardBack, Felt
 from .selection import can_upload
-from .serializers import CardBackSerializer, FeltSerializer
-from .validators import validate_image_upload
+from .serializers import BackgroundSerializer, CardBackSerializer, FeltSerializer
+from .validators import MAX_BACKGROUND_BYTES, MAX_UPLOAD_BYTES, validate_image_upload
 
 
 class _UploadView(APIView):
@@ -35,13 +35,14 @@ class _UploadView(APIView):
 
     model = None
     serializer_class = None
+    max_upload_bytes = MAX_UPLOAD_BYTES
 
     def post(self, request):
         if not can_upload(request.user):
             return error_response(code="forbidden", detail="Only a team owner or manager can upload.", http_status=403)
         image = request.FILES.get("image")
         try:
-            validate_image_upload(image)
+            validate_image_upload(image, max_bytes=self.max_upload_bytes)
         except ValidationError as e:
             return error_response(code="invalid_image", detail="; ".join(e.messages), http_status=400)
         name = (request.data.get("name") or "").strip()[:120]
@@ -70,3 +71,9 @@ class CardBackUploadView(_UploadView):
 class FeltUploadView(_UploadView):
     model = Felt
     serializer_class = FeltSerializer
+
+
+class BackgroundUploadView(_UploadView):
+    model = Background
+    serializer_class = BackgroundSerializer
+    max_upload_bytes = MAX_BACKGROUND_BYTES

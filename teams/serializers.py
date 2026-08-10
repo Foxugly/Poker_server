@@ -30,7 +30,9 @@ class TeamSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "owner_email", "created_at", "my_role", "member_count",
             "card_back_style", "card_back_color", "card_back_id",
-            "felt_style", "felt_color", "felt_id", "result_layout", "deck_ids", "is_paid", "billing_enabled",
+            "felt_style", "felt_color", "felt_id",
+            "background_style", "background_color", "background_id",
+            "result_layout", "deck_ids", "is_paid", "billing_enabled",
         ]
 
     def get_deck_ids(self, team) -> list:

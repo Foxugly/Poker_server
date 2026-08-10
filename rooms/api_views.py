@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 from decks.selection import (
     DELEGATION_POKER_CODE,
+    background_for_team,
     card_back_for_team,
     decks_for_team,
     free_decks,
@@ -86,8 +87,9 @@ class CreateRoomView(APIView):
         if team is not None:
             # Appearance (P2.6): each surface honours the team's chosen style.
             felt = felt_for_team(team)
+            background = background_for_team(team)
             for snap in snapshots:
-                apply_team_appearance(snap, team, card_back=card_back, felt=felt)
+                apply_team_appearance(snap, team, card_back=card_back, felt=felt, background=background)
         snapshot = snapshots[0]
         deck = decks[0]
         code = generate_unique_code(lambda c: Room.objects.filter(code=c).exists())

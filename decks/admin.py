@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Max
 from parler.admin import TranslatableAdmin, TranslatableTabularInline
 
-from .models import Card, CardBack, Deck, Felt, TextLayer, VoteType
+from .models import Background, Card, CardBack, Deck, Felt, TextLayer, VoteType
 
 
 def duplicate_card(card):
@@ -88,5 +88,13 @@ class CardBackAdmin(admin.ModelAdmin):
 
 @admin.register(Felt)
 class FeltAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "is_standard", "free_tier", "uploaded_by", "is_active")
+    list_filter = ("is_standard", "free_tier", "is_active")
+
+
+# Rien n'est livre dans ce catalogue : l'admin est le seul endroit d'ou promouvoir
+# un televersement en fond built-in, si l'envie vient plus tard.
+@admin.register(Background)
+class BackgroundAdmin(admin.ModelAdmin):
     list_display = ("__str__", "is_standard", "free_tier", "uploaded_by", "is_active")
     list_filter = ("is_standard", "free_tier", "is_active")

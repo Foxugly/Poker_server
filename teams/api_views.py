@@ -11,11 +11,11 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 
 from billing.service import paid_required, team_is_paid, user_is_paid, user_quota
-from decks.selection import available_card_backs, available_decks, available_felts
-from decks.serializers import CardBackSerializer, DeckSerializer, FeltSerializer
+from decks.selection import available_backgrounds, available_card_backs, available_decks, available_felts
+from decks.serializers import BackgroundSerializer, CardBackSerializer, DeckSerializer, FeltSerializer
 
 from .invitations import send_invitation_email
-from .models import Invitation, ResultLayout, SurfaceStyle, Team, TeamMembership, TeamRole
+from .models import BackgroundStyle, Invitation, ResultLayout, SurfaceStyle, Team, TeamMembership, TeamRole
 from .permissions import is_manager, is_member, is_owner, membership_of
 from .serializers import (
     AcceptInviteSerializer,
@@ -86,10 +86,10 @@ class TeamDetailView(APIView):
             updates.append("name")
         # Appearance (P2.6): card-back + felt colours, validated as #RRGGBB[AA].
         # Appearance is a paid feature (P2.7): gated once billing is live.
-        if ("card_back_color" in request.data or "felt_color" in request.data):
+        if any(f in request.data for f in ("card_back_color", "felt_color", "background_color")):
             if (err := paid_required(team)) is not None:
                 return err
-        for field in ("card_back_color", "felt_color"):
+        for field in ("card_back_color", "felt_color", "background_color"):
             if field in request.data:
                 color = (request.data.get(field) or "").strip()
                 if not _HEX_COLOR.match(color):
@@ -143,6 +143,25 @@ class TeamDetailView(APIView):
             else:
                 team.card_back_id = back_id
             updates.append("card_back")
+        # Le fond a son propre jeu de valeurs : 'theme' en plus, qui n'existe pas
+        # pour les autres surfaces et signifie « ne rien imposer ».
+        if "background_style" in request.data:
+            value = request.data.get("background_style")
+            if value not in dict(BackgroundStyle.choices):
+                return error_response(code="invalid_style",
+                                      detail="Expected 'theme', 'color' or 'image'.", http_status=400)
+            team.background_style = value
+            updates.append("background_style")
+        if "background_id" in request.data:
+            background_id = request.data.get("background_id")
+            if background_id is None:
+                team.background = None
+            elif not available_backgrounds(team).filter(pk=background_id).exists():
+                return error_response(code="background_unavailable",
+                                      detail="This background is not available to this team.", http_status=400)
+            else:
+                team.background_id = background_id
+            updates.append("background")
         if updates:
             team.save(update_fields=updates)
         if deck_ids_to_set is not None:
@@ -180,6 +199,8 @@ class TeamDeckListView(APIView):
                 "selected_card_back_id": team.card_back_id,
                 "felts": FeltSerializer(available_felts(team), many=True).data,
                 "selected_felt_id": team.felt_id,
+                "backgrounds": BackgroundSerializer(available_backgrounds(team), many=True).data,
+                "selected_background_id": team.background_id,
                 "can_customize": team_is_paid(team),
             }
         )
