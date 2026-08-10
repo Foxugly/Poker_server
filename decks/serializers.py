@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from config.media import absolute_media_url as _media_url
 
-from .models import Card, CardBack, Deck, Felt
+from .models import Background, Card, CardBack, Deck, Felt
 
 
 class DeckCardPreviewSerializer(serializers.ModelSerializer):
@@ -93,3 +93,18 @@ class FeltSerializer(serializers.ModelSerializer):
 
     def get_is_custom(self, felt) -> bool:
         return felt.uploaded_by_id is not None
+
+
+class BackgroundSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    is_custom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Background
+        fields = ["id", "name", "is_standard", "is_custom", "image"]
+
+    def get_image(self, background) -> str:
+        return _media_url(background.image)
+
+    def get_is_custom(self, background) -> bool:
+        return background.uploaded_by_id is not None
