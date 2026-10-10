@@ -13,6 +13,15 @@ EnvironmentFile=/run/poker/.env
 # Daphne (not gunicorn): Channels needs an ASGI server. Binds localhost:8006
 # (§3.4); nginx proxies HTTP + upgrades /ws/ to it (deploy/nginx/poker-api.conf).
 ExecStart=/var/www/django_websites/Poker_server/.venv/bin/daphne -b 127.0.0.1 -p 8006 config.asgi:application
+# Hardening (OPERATIONS.md §3.22): no privilege escalation, private /tmp, read-only
+# system (/usr, /boot, /etc). Never ProtectSystem=strict: /var/www (media, beat schedule)
+# must stay writable.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
 Restart=always
 RestartSec=5
 KillMode=mixed

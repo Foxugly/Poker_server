@@ -10,6 +10,15 @@ UMask=0027
 WorkingDirectory=/var/www/django_websites/Poker_server
 EnvironmentFile=/run/poker/.env
 ExecStart=/var/www/django_websites/Poker_server/.venv/bin/celery -A config beat -l info
+# Hardening (OPERATIONS.md §3.22): no privilege escalation, private /tmp, read-only
+# system (/usr, /boot, /etc). Never ProtectSystem=strict: /var/www (media, beat schedule)
+# must stay writable.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
 Restart=always
 RestartSec=5
 KillMode=mixed
