@@ -153,6 +153,16 @@ Réponse `error` (à l'émetteur seul), jamais un plantage silencieux :
 Codes attendus (liste extensible) : `protocol.version`, `forbidden.not_facilitator`,
 `state.invalid_transition`, `room.expired`, `token.unknown`, `guard.inactive` (claim hors garde-fou).
 
+Ajoutés par l'audit du 2026-10-18 :
+- `payload.invalid` — trame non JSON, enveloppe ou `payload` qui n'est pas un objet, texte non
+  chaîne ou trop long (sujet : 300 caractères). La socket reste ouverte.
+- `server.error` — erreur inattendue côté serveur, journalisée ; la socket reste ouverte.
+- `rate.limited` — plus de 30 messages en 10 s sur une connexion ; suivi d'une fermeture **4008**.
+- `payload.too_large` — trame de plus de 8 Kio ; suivi d'une fermeture **4009**.
+- `token.unknown` peut aussi arriver **sans intention** (`rejectedType: null`) dans une salle
+  d'équipe : le membre a quitté l'équipe ou son compte est désactivé. Le serveur cesse alors de
+  relayer la salle à cette socket (elle reste ouverte, sans reconnexion automatique utile).
+
 ---
 
 ## 8. Transport & robustesse

@@ -137,6 +137,7 @@ jobs:
             "git -C $APP show origin/main:deploy/fetch-env-from-ssm.sh > /usr/local/sbin/poker-env-fetch.sh",
             "chown root:root /usr/local/sbin/poker-env-fetch.sh && chmod 0755 /usr/local/sbin/poker-env-fetch.sh",
             "for u in poker-env-fetch poker-asgi poker-celery poker-celery-beat; do git -C $APP show origin/main:deploy/systemd/$u.service > /etc/systemd/system/$u.service; done",
+            "git -C $APP show origin/main:deploy/nginx/poker-limits.conf > /etc/nginx/conf.d/poker-limits.conf",
             "git -C $APP show origin/main:deploy/nginx/poker-api.conf > /etc/nginx/sites-available/poker-api.conf",
             "ln -sf ../sites-available/poker-api.conf /etc/nginx/sites-enabled/poker-api.conf",
             "systemctl daemon-reload",

@@ -20,6 +20,7 @@ from rooms.models import (
     Vote,
     VoteSession,
 )
+from teams.models import TeamMembership
 
 
 TIMER_MIN_SECONDS = 10
@@ -75,16 +76,31 @@ def _spread_for(strategy, card_values):
 
 
 def resolve_participant(code, token):
-    """token → participant (+ room). Returns None if unknown/expired (contract §3)."""
+    """token → participant (+ room). Returns None if unknown/expired (contract §3).
+
+    A team room is members-only for its whole life, not just at the HTTP join:
+    the seat of a member who left the team, or whose account was deactivated,
+    stops resolving (audit 2026-10-18, I1). The consumer calls this on join, on
+    every intention and periodically on broadcasts, so access follows membership.
+    """
+    if not token:
+        return None
     participant = (
-        Participant.objects.select_related("room")
+        Participant.objects.select_related("room", "user")
         .filter(room__code=code, token=token)
         .first()
     )
     if participant is None:
         return None
-    if not participant.room.is_live:
+    room = participant.room
+    if not room.is_live:
         return None
+    if room.team_id is not None:
+        user = participant.user
+        if user is None or not user.is_active:
+            return None
+        if not TeamMembership.objects.filter(team_id=room.team_id, user=user).exists():
+            return None
     return participant
 
 
@@ -122,8 +138,23 @@ def touch(room):
     room.touch()
 
 
+SUBJECT_MAX_LENGTH = Subject._meta.get_field("text").max_length
+
+
+def _clean_text(value, rejected_type, max_length=SUBJECT_MAX_LENGTH):
+    """A client-supplied text: a string (None reads as empty) within the column
+    size. Anything else is refused with ``payload.invalid`` instead of raising
+    (non-string) or failing at the database (too long under PostgreSQL)."""
+    if value is None:
+        return ""
+    if not isinstance(value, str) or len(value) > max_length:
+        raise RoomError("payload.invalid", f"Expected a text of at most {max_length} characters", rejected_type)
+    return value
+
+
 def set_subject(room, participant, text):
     _require_facilitator(room, participant, "subject.set")
+    text = _clean_text(text, "subject.set")
     session = _current_session(room)
     if session and session.state == RoundState.IDLE:
         session.subject.text = text
@@ -163,7 +194,7 @@ def build_agenda(room):
 def add_subject(room, participant, text):
     """Add a subject to the scenario. The first one auto-becomes the current vote."""
     _require_facilitator(room, participant, "subject.add")
-    text = (text or "").strip()
+    text = _clean_text(text, "subject.add").strip()
     if not text:
         raise RoomError("state.invalid_transition", "Empty subject", "subject.add")
     seq = room.subjects.count() + 1
@@ -244,6 +275,7 @@ def prepare_round(
     error). Reuses the single-setting services so the rules stay in one place.
     """
     _require_facilitator(room, participant, "round.prepare")
+    subject_text = _clean_text(subject_text, "round.prepare") if subject_text is not None else None
     # 1) Make the chosen subject the current one (creating/resetting its session).
     if subject_id is not None:
         select_subject(room, participant, subject_id)
