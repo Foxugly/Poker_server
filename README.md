@@ -37,3 +37,16 @@ Dev uses sqlite + the in-memory channel layer (no Redis needed). Tests: `.venv/S
 
 - `docs/superpowers/specs/2026-07-08-data-model.md` — detailed data model (livrable n°0).
 - Product scope / realtime contract / Phase-1 design: `../Poker_handoff/` (to be versioned here).
+
+## Refresh token transport (web SPA)
+
+Same design as PushIT (PushIT_server #69). With `X-Auth-Mode: cookie` (sent only by the SPA,
+with `withCredentials`), login / magic-link verify / email confirm / `token/refresh/` put the
+refresh token in an `HttpOnly; Secure; SameSite=Lax` cookie (`poker_refresh`,
+`Path=/api/v1/auth/`, host-only, `Max-Age` = refresh lifetime, or a session cookie for
+`remember_me: false`) and omit it from the body. Refresh reads the cookie when the body has none;
+logout and account deletion clear it (logout needs no Bearer in cookie mode). Every cookie-mode
+request must carry an `Origin` in `CORS_ALLOWED_ORIGINS` (403 `origin_not_allowed`); CORS allows
+credentials for that explicit list only, plus the `x-auth-mode` header. Without the header the
+body-token contract is unchanged. The WebSocket is untouched: it authenticates with the room
+participant token in `session.join`, never a JWT. Code: `accounts/refresh_cookie.py`.
