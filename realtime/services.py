@@ -138,8 +138,23 @@ def touch(room):
     room.touch()
 
 
+SUBJECT_MAX_LENGTH = Subject._meta.get_field("text").max_length
+
+
+def _clean_text(value, rejected_type, max_length=SUBJECT_MAX_LENGTH):
+    """A client-supplied text: a string (None reads as empty) within the column
+    size. Anything else is refused with ``payload.invalid`` instead of raising
+    (non-string) or failing at the database (too long under PostgreSQL)."""
+    if value is None:
+        return ""
+    if not isinstance(value, str) or len(value) > max_length:
+        raise RoomError("payload.invalid", f"Expected a text of at most {max_length} characters", rejected_type)
+    return value
+
+
 def set_subject(room, participant, text):
     _require_facilitator(room, participant, "subject.set")
+    text = _clean_text(text, "subject.set")
     session = _current_session(room)
     if session and session.state == RoundState.IDLE:
         session.subject.text = text
@@ -179,7 +194,7 @@ def build_agenda(room):
 def add_subject(room, participant, text):
     """Add a subject to the scenario. The first one auto-becomes the current vote."""
     _require_facilitator(room, participant, "subject.add")
-    text = (text or "").strip()
+    text = _clean_text(text, "subject.add").strip()
     if not text:
         raise RoomError("state.invalid_transition", "Empty subject", "subject.add")
     seq = room.subjects.count() + 1
@@ -260,6 +275,7 @@ def prepare_round(
     error). Reuses the single-setting services so the rules stay in one place.
     """
     _require_facilitator(room, participant, "round.prepare")
+    subject_text = _clean_text(subject_text, "round.prepare") if subject_text is not None else None
     # 1) Make the chosen subject the current one (creating/resetting its session).
     if subject_id is not None:
         select_subject(room, participant, subject_id)
