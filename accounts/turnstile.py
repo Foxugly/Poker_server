@@ -45,7 +45,9 @@ def verify_turnstile_token(token: str, remote_ip: str | None = None) -> bool:
 
 
 def get_remote_ip(request) -> str | None:
+    # The last entry is the one nginx (the only proxy) appended; earlier ones
+    # are client-supplied and prove nothing. Mirrors DRF ``NUM_PROXIES = 1``.
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     if xff:
-        return xff.split(",")[0].strip()
+        return xff.split(",")[-1].strip()
     return request.META.get("REMOTE_ADDR")

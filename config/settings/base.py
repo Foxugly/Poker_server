@@ -196,6 +196,11 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    # nginx is the only proxy and appends the peer it saw to X-Forwarded-For
+    # ($proxy_add_x_forwarded_for). Without NUM_PROXIES, DRF used the whole,
+    # client-controlled header as the throttle identity: a forged XFF per request
+    # reset every anonymous limit (login, register, magic link...).
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
     ],
