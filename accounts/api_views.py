@@ -6,25 +6,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from config.api_errors import error_response
 
-from .email_confirmation import (
-    confirm_email,
-    resend_confirmation_email,
-    send_confirmation_email,
-    send_duplicate_registration_email,
-)
 from . import refresh_cookie
-from .magic_link import request_magic_link, verify_magic_link
-from .models import User
-from .password_reset import confirm_password_reset, request_password_reset
-from .refresh_cookie import cookie_origin_guard, deliver_tokens
-from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
-from .erasure import erase_account
-from .export import build_export
 from .api_serializers import (
     AccountDeleteSerializer,
     EmailConfirmSerializer,
@@ -40,6 +28,18 @@ from .api_serializers import (
     UserMeSerializer,
     build_token_response_for_user,
 )
+from .email_confirmation import (
+    confirm_email,
+    resend_confirmation_email,
+    send_confirmation_email,
+    send_duplicate_registration_email,
+)
+from .erasure import erase_account
+from .export import build_export
+from .magic_link import request_magic_link, verify_magic_link
+from .models import User
+from .password_reset import confirm_password_reset, request_password_reset
+from .refresh_cookie import cookie_origin_guard, deliver_tokens
 from .throttles import (
     AccountDeleteRateThrottle,
     AccountExportRateThrottle,
@@ -51,6 +51,7 @@ from .throttles import (
     UploadRateThrottle,
     with_default_throttles,
 )
+from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 
 
 def _turnstile_ok(serializer, request) -> bool:
@@ -224,6 +225,27 @@ class IsAuthenticatedOrCookieMode(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated)
 
 
+def _blacklist_if_owned(raw_token, user):
+    """Blacklist ``raw_token`` only if it is a valid refresh token of ``user``.
+
+    Logout must not let a caller revoke someone else's session with a token it
+    happened to obtain (audit M8). Returns True when the token was blacklisted.
+    """
+    if not (user and user.is_authenticated):
+        return False
+    try:
+        token = RefreshToken(raw_token)
+    except TokenError:
+        return False
+    if str(token.get(jwt_settings.USER_ID_CLAIM)) != str(getattr(user, jwt_settings.USER_ID_FIELD)):
+        return False
+    try:
+        token.blacklist()
+    except TokenError:
+        return False
+    return True
+
+
 class LogoutApiView(APIView):
     """Blacklist the refresh token.
 
@@ -243,10 +265,13 @@ class LogoutApiView(APIView):
 
         if refresh_cookie.wants_cookie(request):
             # Idempotent: whatever the token's state, the browser ends up signed out.
-            refresh_token = refresh_token or refresh_cookie.read_refresh_cookie(request)
+            # The HttpOnly cookie is the caller's own by construction; a body token
+            # is only honoured when it belongs to the authenticated caller.
             if refresh_token:
+                _blacklist_if_owned(refresh_token, request.user)
+            elif cookie_token := refresh_cookie.read_refresh_cookie(request):
                 try:
-                    RefreshToken(refresh_token).blacklist()
+                    RefreshToken(cookie_token).blacklist()
                 except TokenError:
                     pass
             response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -256,9 +281,7 @@ class LogoutApiView(APIView):
         if not refresh_token:
             return error_response(code="refresh_token_required", detail="The refresh token is required.",
                                   http_status=status.HTTP_400_BAD_REQUEST)
-        try:
-            RefreshToken(refresh_token).blacklist()
-        except Exception:
+        if not _blacklist_if_owned(refresh_token, request.user):
             return error_response(code="refresh_token_invalid", detail="Invalid refresh token.",
                                   http_status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
