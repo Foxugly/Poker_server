@@ -11,7 +11,16 @@ from django.utils import timezone
 from accounts.models import MagicLinkToken
 from decks.seed import create_standard_deck
 from rooms.codes import generate_token
-from rooms.models import Participant, Result, Role, Room, RoundState, Subject, Vote, VoteSession
+from rooms.models import (
+    Participant,
+    Result,
+    Role,
+    Room,
+    RoundState,
+    Subject,
+    Vote,
+    VoteSession,
+)
 from rooms.snapshot import build_deck_snapshot
 from rooms.tasks import purge_retention
 from teams.models import Invitation, Team

@@ -14,7 +14,6 @@ from realtime.services import RoomError
 from rooms.codes import generate_token, generate_unique_code
 from rooms.models import Participant, Role, Room, RoundState, Subject, VoteSession
 from rooms.snapshot import build_deck_snapshot
-from teams.models import Team, TeamMembership, TeamRole
 
 User = get_user_model()
 
@@ -118,7 +117,7 @@ def test_open_round_freezes_its_deck_and_survives_a_later_switch(room_with_two_d
 
 @pytest.mark.django_db
 def test_state_sync_exposes_the_catalogue_and_the_deck_in_play(room_with_two_decks):
-    room, fac, _, standard, other = room_with_two_decks
+    _room, fac, _, standard, other = room_with_two_decks
 
     payload = services.build_state_sync(fac)
 
@@ -130,7 +129,7 @@ def test_state_sync_exposes_the_catalogue_and_the_deck_in_play(room_with_two_dec
 def test_vote_values_follow_the_round_deck_not_the_room(room_with_two_decks):
     """A card valid in the room's new deck must not be accepted in a round frozen
     on the old one."""
-    room, fac, voter, _, other = room_with_two_decks
+    room, fac, voter, _, _other = room_with_two_decks
     subject = Subject.objects.create(room=room, text="Deploys")
     session = VoteSession.objects.create(room=room, subject=subject, facilitator=fac)
     room.current_session = session

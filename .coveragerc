@@ -1,0 +1,11 @@
+# Couverture mesurée en CI (job `test`, audit 2026-10-18 M11). Les tests et les
+# migrations n'entrent pas dans le calcul : ils gonfleraient le chiffre.
+[run]
+source = .
+omit =
+    */tests/*
+    */migrations/*
+    conftest.py
+    manage.py
+    config/wsgi.py
+    config/asgi.py

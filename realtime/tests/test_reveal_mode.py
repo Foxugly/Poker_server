@@ -11,7 +11,7 @@ from decks.seed import create_standard_deck
 from realtime import services
 from realtime.services import RoomError
 from rooms.codes import generate_token, generate_unique_code
-from rooms.models import Participant, Role, Room, RoundState, Subject, VoteSession
+from rooms.models import Participant, Role, Room, Subject, VoteSession
 from rooms.snapshot import build_deck_snapshot
 from teams.models import Team, TeamMembership, TeamRole
 
@@ -114,6 +114,6 @@ def test_state_sync_announces_the_mode_to_everyone(paid_team):
 
 @pytest.mark.django_db
 def test_free_room_state_sync_says_it_cannot_anonymise(db):
-    room, fac, _, _ = _room()
+    _r, fac, _, _ = _room()
 
     assert services.build_state_sync(fac)["reveal"] == {"anonymous": False, "canAnonymise": False}

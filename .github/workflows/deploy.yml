@@ -86,7 +86,8 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        # pytest-cov n'est utile qu'ici : épinglé dans la CI, pas dans requirements.txt.
+        run: pip install -r requirements.txt pytest-cov==7.0.0
 
       - name: Run tests
         env:
@@ -99,10 +100,28 @@ jobs:
           DB_PORT: "5432"
           DB_USER: postgres
           DB_PASSWORD: postgres
-        run: pytest -q
+        # Seuil de couverture (audit M11) : 92 % mesurés le 2026-10-21, hors tests et
+        # migrations (.coveragerc). Cliquet quelques points en dessous ; le relever
+        # quand la couverture monte.
+        run: pytest -q --cov --cov-report=term --cov-fail-under=88
+
+  # Audit 2026-10-18, M11. Versions épinglées (OPERATIONS.md §3.22) : une montée
+  # de ruff active de nouvelles règles et casserait la CI sans changement de code.
+  # Même version que QuizOnline (requirements.txt) ; règles dans ruff.toml.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install ruff
+        run: pip install ruff==0.17.1
+      - name: Ruff
+        run: ruff check . --output-format=github
 
   deploy:
-    needs: test
+    needs: [test, lint]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
