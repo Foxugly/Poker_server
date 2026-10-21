@@ -40,7 +40,8 @@ def _live_room_or_none(code):
 
 
 def _display_name_for(user) -> str:
-    return (user.display_name or user.email).strip()
+    # Broadcast to every participant over the socket: never the email (User.public_name).
+    return user.public_name
 
 
 class CreateRoomView(APIView):
@@ -143,6 +144,11 @@ class JoinRoomView(APIView):
                     room=room, token=generate_token(), display_name=_display_name_for(request.user),
                     role=Role.VOTER, user=request.user,
                 )
+            elif participant.display_name != _display_name_for(request.user):
+                # Follow profile changes on re-join (and heal seats named before the
+                # email stopped being used as a fallback name).
+                participant.display_name = _display_name_for(request.user)
+                participant.save(update_fields=["display_name"])
         else:
             serializer = JoinRoomSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)

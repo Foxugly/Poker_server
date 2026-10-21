@@ -71,6 +71,24 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+    @property
+    def public_name(self) -> str:
+        """The name other people see (team members, room participants).
+
+        Never derived from the email — not even its local part, which often is the
+        person's real name or a reusable handle. Falls back to the first name, then
+        to a neutral "Participant <id>"."""
+        return public_name_for(self)
+
+
+def public_name_for(user) -> str:
+    for candidate in (user.display_name, user.first_name):
+        name = (candidate or "").strip()
+        # A name typed as an email address would leak it just the same.
+        if name and "@" not in name:
+            return name[:50]
+    return f"Participant {user.pk}"
+
 
 def generate_magic_token() -> str:
     return secrets.token_urlsafe(32)
