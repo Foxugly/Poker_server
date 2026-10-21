@@ -236,6 +236,12 @@ class TeamDeckListView(APIView):
         )
 
 
+def _member_context(team, viewer) -> dict:
+    """Who may read members' emails: the team's managers, plus each member for
+    their own row (``MemberUserSerializer.get_email``)."""
+    return {"viewer_id": viewer.id, "viewer_is_manager": is_manager(team, viewer)}
+
+
 class MemberListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -244,7 +250,8 @@ class MemberListView(APIView):
         if not is_member(team, request.user):
             return error_response(code="not_a_member", detail="Not a member of this team.", http_status=403)
         members = team.memberships.select_related("user").order_by("joined_at")
-        return Response(MembershipSerializer(members, many=True).data)
+        context = _member_context(team, request.user)
+        return Response(MembershipSerializer(members, many=True, context=context).data)
 
 
 class MemberDetailView(APIView):
@@ -261,7 +268,7 @@ class MemberDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         membership.role = serializer.validated_data["role"]
         membership.save(update_fields=["role"])
-        return Response(MembershipSerializer(membership).data)
+        return Response(MembershipSerializer(membership, context=_member_context(team, request.user)).data)
 
     def delete(self, request, team_id, user_id):
         team = get_object_or_404(Team, pk=team_id)

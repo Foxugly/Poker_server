@@ -6,10 +6,23 @@ from .models import Invitation, Team, TeamMembership, TeamRole
 
 
 class MemberUserSerializer(serializers.Serializer):
+    """A team member as other members see them.
+
+    ``email`` is only sent to the team's managers (owner + managers, who need it to
+    administer the team) and to the member themself; every other member gets
+    ``null``. ``display_name`` is always a public name, never derived from the
+    email (see ``User.public_name``)."""
+
     id = serializers.IntegerField()
-    email = serializers.EmailField()
-    display_name = serializers.CharField()
+    email = serializers.SerializerMethodField()
+    display_name = serializers.CharField(source="public_name")
     avatar_url = serializers.SerializerMethodField()
+
+    def get_email(self, user) -> str | None:
+        viewer_id = self.context.get("viewer_id")
+        if self.context.get("viewer_is_manager") or (viewer_id is not None and viewer_id == user.id):
+            return user.email
+        return None
 
     def get_avatar_url(self, user) -> str:
         from config.media import absolute_media_url
@@ -20,7 +33,6 @@ class MemberUserSerializer(serializers.Serializer):
 class TeamSerializer(serializers.ModelSerializer):
     my_role = serializers.SerializerMethodField()
     member_count = serializers.SerializerMethodField()
-    owner_email = serializers.EmailField(source="owner.email", read_only=True)
     deck_ids = serializers.SerializerMethodField()
     is_paid = serializers.SerializerMethodField()
     billing_enabled = serializers.SerializerMethodField()
@@ -28,7 +40,7 @@ class TeamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Team
         fields = [
-            "id", "name", "owner_email", "created_at", "my_role", "member_count",
+            "id", "name", "created_at", "my_role", "member_count",
             "card_back_style", "card_back_color", "card_back_id",
             "felt_style", "felt_color", "felt_id",
             "background_style", "background_color", "background_id",
