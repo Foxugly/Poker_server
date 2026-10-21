@@ -50,7 +50,7 @@ def room_with_facilitator(standard_deck, db):
 
 @pytest.mark.django_db
 def test_timer_defaults_to_disabled_at_ten_seconds(room_with_facilitator):
-    room, facilitator, _ = room_with_facilitator
+    room, _facilitator, _ = room_with_facilitator
     assert room.timer_enabled is False and room.timer_seconds == 10
 
 

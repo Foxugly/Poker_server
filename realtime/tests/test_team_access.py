@@ -16,9 +16,9 @@ from realtime import consumers
 from realtime.routing import websocket_urlpatterns
 from rooms.codes import generate_token, generate_unique_code
 from rooms.models import Participant, Role, Room
+from rooms.snapshot import build_deck_snapshot
 from rooms.tasks import expire_stale_rooms
 from teams.models import Team, TeamMembership, TeamRole
-from rooms.snapshot import build_deck_snapshot
 
 User = get_user_model()
 
@@ -115,7 +115,7 @@ async def test_member_removed_mid_session_loses_intentions_and_broadcasts(monkey
 @pytest.mark.django_db(transaction=True)
 async def test_passive_socket_is_evicted_on_next_broadcast(monkeypatch):
     monkeypatch.setattr(consumers, "MEMBERSHIP_RECHECK_SECONDS", 0)
-    code, team, member, fac_token, voter_token = await database_sync_to_async(_team_room)()
+    code, _team, member, fac_token, voter_token = await database_sync_to_async(_team_room)()
     fac = await _open(code)
     assert (await _join(fac, fac_token))["type"] == "state.sync"
     voter = await _open(code)

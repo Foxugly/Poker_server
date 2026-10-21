@@ -8,6 +8,7 @@ mutation validates the state machine and raises ``RoomError`` on an illegal move
 from collections import Counter
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from rooms.models import (
@@ -21,7 +22,6 @@ from rooms.models import (
     VoteSession,
 )
 from teams.models import TeamMembership
-
 
 TIMER_MIN_SECONDS = 10
 TIMER_MAX_SECONDS = 60
@@ -543,13 +543,19 @@ def can_claim(room):
 def promote_facilitator(room, participant):
     """First claimer becomes facilitator. Authority is by session.facilitator, so the
     old facilitator returning is a plain voter (definitive transfer, §6.f) — no token
-    reissue needed since control is keyed on participant identity, not a secret."""
-    session = _current_session(room)
-    if session:
-        session.facilitator = participant
-        session.save(update_fields=["facilitator"])
-    participant.role = Role.FACILITATOR
-    participant.save(update_fields=["role"])
+    reissue needed since control is keyed on participant identity, not a secret.
+
+    Any other FACILITATOR of the room is demoted to VOTER in the same transaction:
+    before the first round there is no session, and authority falls back to the role
+    (``_require_facilitator``) — two facilitators would then both hold it (audit M6)."""
+    with transaction.atomic():
+        room.participants.filter(role=Role.FACILITATOR).exclude(id=participant.id).update(role=Role.VOTER)
+        session = _current_session(room)
+        if session:
+            session.facilitator = participant
+            session.save(update_fields=["facilitator"])
+        participant.role = Role.FACILITATOR
+        participant.save(update_fields=["role"])
 
 
 def transfer_facilitator(room, participant, target_public_id):

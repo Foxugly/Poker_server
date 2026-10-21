@@ -237,6 +237,34 @@ def test_logout_in_cookie_mode_is_idempotent_without_a_cookie(user):
     assert resp.status_code == 204
 
 
+def _other_users_refresh():
+    other = User.objects.create_user(email="other@example.com", password=PASSWORD, email_confirmed=True)
+    return str(RefreshToken.for_user(other))
+
+
+def test_body_logout_refuses_someone_elses_refresh(user):
+    """Audit M8 : un appelant authentifie ne peut pas revoquer la session d'un autre."""
+    victim_refresh = _other_users_refresh()
+    app = APIClient()
+    access = app.post(LOGIN_URL, {"email": EMAIL, "password": PASSWORD}, format="json").json()["access"]
+    app.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    resp = app.post(LOGOUT_URL, {"refresh": victim_refresh}, format="json")
+
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "refresh_token_invalid"
+    assert not is_blacklisted(victim_refresh)
+
+
+def test_cookie_logout_ignores_someone_elses_body_refresh(user):
+    victim_refresh = _other_users_refresh()
+
+    resp = spa_client().post(LOGOUT_URL, {"refresh": victim_refresh}, format="json")
+
+    assert resp.status_code == 204
+    assert not is_blacklisted(victim_refresh)
+
+
 # --- account deletion ---------------------------------------------------------
 
 

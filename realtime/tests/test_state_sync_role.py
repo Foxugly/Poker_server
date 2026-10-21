@@ -31,7 +31,7 @@ def _room():
 
 @pytest.mark.django_db
 def test_state_sync_tells_each_client_its_own_role(db):
-    room, fac, voter = _room()
+    _r, fac, voter = _room()
 
     assert services.build_state_sync(fac)["myRole"] == Role.FACILITATOR
     assert services.build_state_sync(voter)["myRole"] == Role.VOTER
@@ -41,7 +41,7 @@ def test_state_sync_tells_each_client_its_own_role(db):
 def test_state_sync_identifies_the_recipient(db):
     """L'identifiant permet au client de se reconnaitre dans les diffusions, qui
     designent le nouveau facilitateur par son identifiant public."""
-    room, fac, voter = _room()
+    _r, fac, voter = _room()
 
     assert services.build_state_sync(voter)["myParticipantId"] == str(voter.public_id)
     assert services.build_state_sync(fac)["myParticipantId"] == str(fac.public_id)
@@ -51,7 +51,7 @@ def test_state_sync_identifies_the_recipient(db):
 def test_claiming_the_role_is_visible_to_the_claimer(db):
     """Le coeur du defaut : apres la prise de role, l'interesse doit se voir
     facilitateur, et l'ancien redevenir simple votant."""
-    room, fac, voter = _room()
+    room, _fac, voter = _room()
     services.promote_facilitator(room, voter)
     room.refresh_from_db()
 
@@ -70,3 +70,24 @@ def test_a_hand_over_demotes_the_giver_for_himself(db):
 
     assert services.build_state_sync(fac)["myRole"] == Role.VOTER
     assert services.build_state_sync(voter)["myRole"] == Role.FACILITATOR
+
+
+@pytest.mark.django_db
+def test_claim_before_any_round_demotes_the_previous_facilitator(db):
+    """Audit M6 : avant le premier sujet, il n'y a pas de session et l'autorite
+    retombe sur le role. La prise de main doit donc retrograder l'ancien
+    facilitateur, sinon deux participants ont l'autorite."""
+    room, fac, voter = _room()
+    room.current_session = None
+    room.save(update_fields=["current_session"])
+
+    services.promote_facilitator(room, voter)
+    fac.refresh_from_db()
+    voter.refresh_from_db()
+
+    assert fac.role == Role.VOTER
+    assert voter.role == Role.FACILITATOR
+    assert list(room.participants.filter(role=Role.FACILITATOR)) == [voter]
+    with pytest.raises(services.RoomError):
+        services._require_facilitator(room, fac, "subject.add")
+    services._require_facilitator(room, voter, "subject.add")
