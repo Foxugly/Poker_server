@@ -50,3 +50,9 @@ request must carry an `Origin` in `CORS_ALLOWED_ORIGINS` (403 `origin_not_allowe
 credentials for that explicit list only, plus the `x-auth-mode` header. Without the header the
 body-token contract is unchanged. The WebSocket is untouched: it authenticates with the room
 participant token in `session.join`, never a JWT. Code: `accounts/refresh_cookie.py`.
+
+Reuse grace: a refresh token rotated less than `AUTH_REFRESH_REUSE_GRACE_SECONDS` ago (30 s, `0`
+disables) is accepted **once** more, cookie mode only, from the same client (IP + User-Agent), if its
+successor was never used nor revoked; the successor is then blacklisted and a new pair issued. It covers
+a reload during the boot refresh that drops the rotated `Set-Cookie`. State lives in the cache (Redis in
+prod). Code: `accounts/refresh_grace.py`.
