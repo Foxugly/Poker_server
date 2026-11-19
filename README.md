@@ -21,6 +21,7 @@ simplejwt (Phase 2 auth). Python 3.14, port `127.0.0.1:8006`.
 | `rooms` | Runtime: `Room` / `Participant` / `Subject` / `VoteSession` / `Vote` / `Result` + HTTP API. |
 | `realtime` | Channels consumer + domain services (state machine, authority, secret votes). |
 | `health` | `/health/` (status + DB check). |
+| `admin_2fa` | Mandatory TOTP 2FA on `/admin/` (django-otp) — see `CLAUDE.md` « Admin 2FA ». |
 
 ## Local dev
 

@@ -26,6 +26,9 @@ class NginxConfTests(unittest.TestCase):
         self.assertIn("limit_req zone=poker_admin_login", _block("location = /admin/login/"))
         self.assertRegex(LIMITS, r"limit_req_zone \$binary_remote_addr zone=poker_admin_login:\S+ rate=10r/m;")
 
+    def test_admin_2fa_steps_share_the_login_limit(self):
+        self.assertIn("limit_req zone=poker_admin_login", _block("location ^~ /admin/2fa/"))
+
     def test_websockets_are_capped_per_ip(self):
         self.assertIn("limit_conn poker_ws_conn", _block("    location /ws/ {"))
         self.assertIn("zone=poker_ws_conn", LIMITS)
