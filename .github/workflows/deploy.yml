@@ -160,6 +160,13 @@ jobs:
           aws-region: eu-west-1
           role-session-name: gh-actions-${{ github.run_id }}
 
+      # Ordre : `restart poker-env-fetch` AVANT le `git reset` du checkout django.
+      # poker-asgi / celery / celery-beat ont Requires=poker-env-fetch : systemd propage
+      # le restart et les relance aussitot. Relances sur le NOUVEAU code avec l'ANCIEN
+      # venv (deploy.sh n'a pas encore installe le verrou), ils plantaient au demarrage
+      # des qu'une dependance arrivait (ModuleNotFoundError / AppRegistryNotReady, meme
+      # bug que billing_server#74). Relances sur l'ancien code + ancien venv, ils restent
+      # coherents ; deploy.sh les relance ensuite sur le nouveau code, verrou installe.
       - name: Trigger deploy on EC2 via SSM
         id: ssm
         env:
@@ -177,7 +184,6 @@ jobs:
             "[ -d $M ] || git init --quiet --bare $M",
             "git --git-dir=$M fetch --quiet --depth=1 https://github.com/Foxugly/Poker_server.git $SHA",
             "git --git-dir=$M cat-file -e $SHA^{commit}",
-            "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "git --git-dir=$M show $SHA:deploy/fetch-env-from-ssm.sh > /usr/local/sbin/poker-env-fetch.sh",
             "chown root:root /usr/local/sbin/poker-env-fetch.sh && chmod 0755 /usr/local/sbin/poker-env-fetch.sh",
             "for u in poker-env-fetch poker-asgi poker-celery poker-celery-beat; do git --git-dir=$M show $SHA:deploy/systemd/$u.service > /etc/systemd/system/$u.service; done",
@@ -187,6 +193,7 @@ jobs:
             "systemctl daemon-reload",
             "systemctl enable poker-env-fetch poker-asgi poker-celery poker-celery-beat",
             "systemctl restart poker-env-fetch",
+            "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "sudo -u django bash $APP/deploy/deploy.sh",
             "nginx -t && systemctl reload nginx"
           ], "executionTimeout": ["900"] }
