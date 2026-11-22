@@ -33,23 +33,23 @@ py -m venv .venv
 ```
 
 Dependencies: `requirements.in` lists the direct deps (ranges); `requirements.txt` is the
-hash-pinned lock generated from it for the box (Linux, Python 3.12) and is what CI and the
+hash-pinned lock generated from it for the box (Linux, Python 3.14 — deadsnakes `/usr/bin/python3.14` on the box) and is what CI and the
 deploy install (`pip install --require-hashes -r requirements.txt`). It cannot be used on
 Windows (platform-specific deps such as `tzdata` are resolved out), hence `requirements.in`
 above. After editing `requirements.in`, regenerate the lock:
 
 ```bash
-uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+uv pip compile requirements.in --generate-hashes --python-version 3.14 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
 ```
 
 Dependencies: `requirements.in` lists the direct deps (ranges); `requirements.txt` is the
-hash-pinned lock generated from it for the box (Linux, Python 3.12) — what CI and the deploy
+hash-pinned lock generated from it for the box (Linux, Python 3.14 — deadsnakes `/usr/bin/python3.14` on the box) — what CI and the deploy
 install (`pip install --require-hashes -r requirements.txt`). It is not usable on Windows
 (platform-only deps such as `tzdata` are resolved out), hence `requirements.in` above. After
 editing `requirements.in`, regenerate the lock:
 
 ```bash
-uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+uv pip compile requirements.in --generate-hashes --python-version 3.14 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
 ```
 
 Dev uses sqlite + the in-memory channel layer (no Redis needed). Tests: `.venv/Scripts/python -m pytest`.

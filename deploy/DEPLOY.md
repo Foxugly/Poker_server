@@ -40,7 +40,9 @@ upgrade block (`deploy/nginx/poker-api.conf`). Redis is required for the Channel
 ## First deploy
 
 Push to `main` → the workflow installs units + nginx from the git blob, `daemon-reload`, enables
-`poker-env-fetch`/`poker-asgi`/`poker-celery`/`poker-celery-beat`, runs `deploy.sh` (migrate,
+`poker-env-fetch`/`poker-asgi`/`poker-celery`/`poker-celery-beat`, runs `deploy.sh` (rebuilds `.venv` in place on
+`/usr/bin/python3.14` — deadsnakes — if it runs another version, old one kept as `.venv.prev` and
+restored on failure; then the hash-locked install, migrate,
 collectstatic, seed the standard deck, restart), and `nginx -t && reload`.
 
 ## Verify
