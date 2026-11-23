@@ -160,13 +160,11 @@ jobs:
           aws-region: eu-west-1
           role-session-name: gh-actions-${{ github.run_id }}
 
-      # Ordre : `restart poker-env-fetch` AVANT le `git reset` du checkout django.
-      # poker-asgi / celery / celery-beat ont Requires=poker-env-fetch : systemd propage
-      # le restart et les relance aussitot. Relances sur le NOUVEAU code avec l'ANCIEN
-      # venv (deploy.sh n'a pas encore installe le verrou), ils plantaient au demarrage
-      # des qu'une dependance arrivait (ModuleNotFoundError / AppRegistryNotReady, meme
-      # bug que billing_server#74). Relances sur l'ancien code + ancien venv, ils restent
-      # coherents ; deploy.sh les relance ensuite sur le nouveau code, verrou installe.
+      # --job-mode=ignore-dependencies : seul poker-env-fetch est relance (relecture SSM).
+      # Sans lui, le restart se propageait via Requires= aux units de l'app, qui demarraient
+      # pendant le `git reset` et importaient le NOUVEAU code avec l'ANCIEN venv
+      # (ModuleNotFoundError 5-10 s, billing 23/11). deploy.sh les relance une seule fois, a
+      # la fin : nouveau code, verrou installe, env relu.
       - name: Trigger deploy on EC2 via SSM
         id: ssm
         env:
@@ -192,7 +190,7 @@ jobs:
             "ln -sf ../sites-available/poker-api.conf /etc/nginx/sites-enabled/poker-api.conf",
             "systemctl daemon-reload",
             "systemctl enable poker-env-fetch poker-asgi poker-celery poker-celery-beat",
-            "systemctl restart poker-env-fetch",
+            "systemctl restart --job-mode=ignore-dependencies poker-env-fetch",
             "sudo -u django bash -c 'umask 027; cd '$APP' && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "sudo -u django bash $APP/deploy/deploy.sh",
             "nginx -t && systemctl reload nginx"
