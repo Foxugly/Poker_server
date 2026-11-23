@@ -8,7 +8,7 @@ user-level `~/.claude/CLAUDE.md` and `foxugly-ops/OPERATIONS.md`.
 
 ```bash
 .venv/Scripts/python -m pytest -q          # whole suite (CI: PostgreSQL 16, --cov-fail-under=88)
-ruff check .                               # ruff==0.17.1, as in CI
+ruff check .                               # ruff==0.17.6, as in CI
 .venv/Scripts/python manage.py check       # includes the admin_2fa.E00x checks
 ```
 
