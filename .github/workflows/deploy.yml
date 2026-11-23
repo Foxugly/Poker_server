@@ -94,7 +94,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --require-hashes -r requirements.txt
-          pip install pytest-cov==7.0.0
+          pip install pytest-cov==7.1.0
 
       # Même installation que deploy/deploy.sh, dans un venv propre : prouve que le
       # verrou est complet (--no-deps : rien n'est résolu sur la box) et cohérent.
@@ -131,7 +131,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install ruff
-        run: pip install ruff==0.17.1
+        run: pip install ruff==0.17.6
       - name: Ruff
         run: ruff check . --output-format=github
 
