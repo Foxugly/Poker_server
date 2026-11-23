@@ -12,8 +12,14 @@ import sentry_sdk
 from sentry_sdk.transport import Transport
 
 from config.sentry import before_send, sentry_options
-from config.sentry_scrub import FILTERED, scrub_event, scrub_span
+from config.sentry_scrub import FILTERED, scrub_event, scrub_span, scrub_text
 
+_SECRET_ROUTE_EXAMPLES = [
+    ("/api/v1/rooms/ABC123/join", "/api/v1/rooms/[Filtered]/join"),
+    ("/api/v1/rooms/ABC123", "/api/v1/rooms/[Filtered]"),
+    ("/ws/rooms/ABC123/", "/ws/rooms/[Filtered]/"),
+    ("/api/v1/rooms", "/api/v1/rooms"),
+]
 _OPTIONS = {"dsn": "https://public@o0.ingest.sentry.io/1", "environment": "test", "release": "test"}
 
 
@@ -211,6 +217,93 @@ def test_before_send_span_runs_on_real_spans(sentry):
     text = repr(spans)
     assert "abc" not in text and "'k'" not in text
     assert "[Filtered]" in text
+
+
+def test_response_headers_are_not_collected():
+    options = sentry_options(**_OPTIONS, traces_sample_rate=0.0)
+    headers = options["data_collection"]["http_headers"]
+    assert headers["response"] == {"mode": "off"}
+
+
+def test_scrub_event_masks_contexts_and_embedded_spans():
+    event = {
+        "contexts": {
+            "response": {
+                "status_code": 200,
+                "headers": {"Set-Cookie": "sessionid=abc", "Authorization": "x", "Vary": "Cookie"},
+            },
+            "trace": {"trace_id": "0123456789abcdef", "data": {"auth_token": "t", "n": 1}},
+        },
+        "spans": [
+            {
+                "description": "GET https://example.test/?token=abc",
+                "name": "GET /reset?password=pw",
+                "data": {"password": "pw", "url": "https://u:p@example.test/x", "n": 1},
+                "attributes": {"http.request.header.cookie": "c"},
+            }
+        ],
+    }
+    out = scrub_event(event, {})
+    response = out["contexts"]["response"]
+    assert response["headers"] == {"Set-Cookie": FILTERED, "Authorization": FILTERED, "Vary": "Cookie"}
+    assert response["status_code"] == 200
+    trace = out["contexts"]["trace"]
+    assert trace["data"] == {"auth_token": FILTERED, "n": 1}
+    assert trace["trace_id"] == "0123456789abcdef"
+    (span,) = out["spans"]
+    assert span["description"] == "GET https://example.test/?token=[Filtered]"
+    assert span["name"] == "GET /reset?password=[Filtered]"
+    assert span["data"] == {"password": FILTERED, "url": "https://example.test/x", "n": 1}
+    assert span["attributes"] == {"http.request.header.cookie": FILTERED}
+
+
+def test_scrub_event_masks_messages():
+    event = {
+        "logentry": {"message": "GET %s failed", "params": ["/x?token=abc"], "formatted": "GET /x?token=abc failed"},
+        "message": "broker redis://:pw@127.0.0.1:6379/1 down",
+        "exception": {"values": [{"type": "E", "value": "bad https://u:p@example.test/?secret=s"}]},
+        "breadcrumbs": {"values": [{"message": "Bearer abc.def"}]},
+    }
+    out = scrub_event(event, {})
+    assert out["logentry"]["params"] == ["/x?token=[Filtered]"]
+    assert out["logentry"]["formatted"] == "GET /x?token=[Filtered] failed"
+    assert out["message"] == "broker redis://127.0.0.1:6379/1 down"
+    assert out["exception"]["values"][0]["value"] == "bad https://example.test/?secret=[Filtered]"
+    assert out["breadcrumbs"]["values"][0]["message"] == "Bearer [Filtered]"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("https://user:pass@example.test/a?b=1", "https://example.test/a?b=1"),
+        ("redis://:secretpw@127.0.0.1:6379/2", "redis://127.0.0.1:6379/2"),
+        ("postgres://app@db.internal:5432/app", "postgres://db.internal:5432/app"),
+        ("https://example.test:99999999/x@y", "https://example.test:99999999/x@y"),
+        ("https://u:p@[::1/x", "https://[::1/x"),  # unparseable: urlsplit raises
+        ("see https://example.test/plain", "see https://example.test/plain"),
+    ],
+)
+def test_scrub_text_drops_url_userinfo(text, expected):
+    assert scrub_text(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("/api/v1/x/AbCdEf0123456789XyZ_-abcdef/", "/api/v1/x/[Filtered]/"),
+        ("GET /x/q1w2e3r4t5y6u7i8o9p0a1s2d3?n=1", "GET /x/[Filtered]?n=1"),
+        ("/api/v1/course/42/sections/", "/api/v1/course/42/sections/"),
+        ("/api/v1/notification-preferences-overview/", "/api/v1/notification-preferences-overview/"),
+        ("/api/v1/reset/<str:token>/", "/api/v1/reset/<str:token>/"),
+    ],
+)
+def test_scrub_text_masks_long_opaque_path_segments(text, expected):
+    assert scrub_text(text) == expected
+
+
+@pytest.mark.parametrize(("text", "expected"), _SECRET_ROUTE_EXAMPLES)
+def test_scrub_text_masks_secret_route_segments(text, expected):
+    assert scrub_text(text) == expected
 
 
 def test_before_send_scrubs():
