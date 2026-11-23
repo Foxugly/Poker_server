@@ -17,14 +17,16 @@ def _ssm_commands():
 
 class DeployOrderTests(unittest.TestCase):
     def test_checkout_is_updated_after_env_fetch_restart(self):
-        # The app units Require env-fetch: its restart restarts them at once. If the
-        # checkout were already on the new code, they would run it with the old venv.
+        # The app units Require env-fetch: a plain restart restarts them too, and they
+        # started while the checkout moved (new code, old venv: billing 2026-11-23).
+        # Only env-fetch is restarted; deploy.sh restarts the app once, venv installed.
         commands = _ssm_commands()
 
         def position(needle):
             return next(i for i, c in enumerate(commands) if needle in c)
 
-        env_fetch = position("systemctl restart poker-env-fetch")
+        env_fetch = position("systemctl restart --job-mode=ignore-dependencies poker-env-fetch")
+        self.assertFalse(any("systemctl restart poker-env-fetch" in c for c in commands))
         checkout = position("git reset --hard")
         deploy = position("deploy/deploy.sh")
         self.assertLess(env_fetch, checkout)
